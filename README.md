@@ -1,8 +1,9 @@
 # vms-fix
 
-A Tampermonkey userscript that puts a D0007-shaped front end on the national VMS portal. Read-only for now. It runs on the
-portal page as whoever is signed in, so it only ever shows what that person's VMS role already lets them see, and it
-never writes anything back.
+A Tampermonkey userscript that puts a D0007-shaped front end on the national VMS portal. It runs on the portal page as
+whoever is signed in, so it only ever shows what that person's VMS role already lets them see. The one thing it writes
+is shift approvals on the Hours tab, through the same approval form the portal uses, after you've confirmed the list
+of exactly what will change.
 
 Built for St. John Ambulance Hamilton-Wentworth (D0007) MFR. Other groups could reuse it by changing `GROUP_ID` at the
 top of the script.
@@ -30,7 +31,7 @@ Chrome 138+ note: if Tampermonkey complains that userscripts are blocked, turn o
 |---|---|---|
 | Events | Upcoming / current / past / ad hoc events for the group with date, location, status, required quals and a staffing bar (signed up vs minimum, "N still needed"). "Who's on it" expands the sign-up list and reported shifts. | Group Lead > Events subgrids, `get-engagements`, event-summary subgrids |
 | Roster | All group members with email, phone, status, contact id. Search. Click a member for their 12-month hours and certs. CSV download. | `volunteers-by-group-csv-feed` |
-| Hours | Completed vs pending hours by volunteer or by event, 12 months / 90 days / 30 days. Sortable. CSV download. | `participation-reports-csv-feed` |
+| Hours | **Pending approvals**: every reported shift waiting on a group lead, grouped by event, with hours / status / times editable per row or per event, a confirmation list, and a per-shift result. Below it (collapsed), completed vs pending hours by volunteer or by event, 12 months / 90 days / 30 days. Sortable. CSV download. | Group Lead → Hours page, the shift approval entity form, `participation-reports-csv-feed` |
 | Certifications | Every cert VMS will report, flagged Expired / Expiring in 90 days / Current / No expiry. Filter by status, member or qualification. CSV download. | `qualifications-gained-csv-feed` + `verified-qualifications-csv-feed` |
 
 ## How it gets the data
@@ -54,6 +55,23 @@ clicking through pages.
   all five and de-dupes.
 
 Results are cached in memory until you hit Refresh.
+
+## Approving hours
+
+This is the only write. It does what you'd do by hand on Group Lead → Hours, without the one-modal-per-shift part:
+
+- The pending list is read off the Hours page (`/group-lead/hours/?groupid=…&fetchPage=n`), which renders its table
+  from inline JS, one block per shift. Ten a page, so a backlog of 143 is fifteen reads.
+- Each shift's approval form (`/_portal/modal-form-template-path/…?id=<shift>&entityformid=…`, a Power Pages entity
+  form over `msnfp_participationschedule`) is read when you first touch the row, so the start, end and hours on screen
+  are the record's own values, not the list's.
+- Submit shows the full list of changes; Confirm then loads each form in a hidden iframe, sets the same four fields
+  (`sjavms_start`, `sjavms_end`, `sjavms_hours`, `msnfp_schedulestatus`) and clicks the form's own Submit button, so
+  the portal's validators and WebForms postback run exactly as they do in the modal. Success is the same
+  "Submission completed successfully." the portal's modal code waits for; anything else is shown on the row.
+- One shift at a time, in order. A failure doesn't stop the rest. The pending list is re-read afterwards.
+
+An approved shift can't be put back to pending from this screen. If you need that, it's the record in VMS.
 
 ## Why a userscript
 
