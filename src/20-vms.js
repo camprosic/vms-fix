@@ -188,6 +188,100 @@
       return rows;
     });
 
-    return { upcomingEngagements, groupEvents, eventDetail, roster, hours, certifications, clear: () => { cache.clear(); token = null; } };
+    // 7. The few event columns the web api still exposes: address and the short
+    //    description. Batched ten ids per call, cached per id.
+    const extrasCache = new Map();
+    async function eventExtras(ids) {
+      const need = [...new Set(ids)].filter(id => id && !extrasCache.has(id));
+      for (let i = 0; i < need.length; i += 10) {
+        const chunk = need.slice(i, i + 10);
+        const filter = chunk.map(id => `msnfp_engagementopportunityid eq ${id}`).join(' or ');
+        try {
+          const r = await fetchOk(`/_api/msnfp_engagementopportunities?$select=msnfp_engagementopportunityid,msnfp_street1,msnfp_city,msnfp_stateprovince,msnfp_zippostalcode,msnfp_shortdescription&$filter=${encodeURIComponent(filter)}`, { headers: { Accept: 'application/json' } });
+          const j = await r.json();
+          (j.value || []).forEach(x => extrasCache.set(x.msnfp_engagementopportunityid, { street: x.msnfp_street1 || '', city: x.msnfp_city || '', province: x.msnfp_stateprovince || '', postal: x.msnfp_zippostalcode || '', description: x.msnfp_shortdescription || '' }));
+        } catch (e) { /* the web api gets narrowed without notice; the address column just goes blank */ }
+        chunk.forEach(id => { if (!extrasCache.has(id)) extrasCache.set(id, null); });
+      }
+      return new Map(ids.map(id => [id, extrasCache.get(id) || null]));
+    }
+
+    // 8. Event id -> public engagement id (the id the public /engagement/ page wants).
+    const publicIdCache = new Map();
+    async function publicIdsFor(ids) {
+      const need = [...new Set(ids)].filter(id => id && !publicIdCache.has(id));
+      for (let i = 0; i < need.length; i += 10) {
+        const chunk = need.slice(i, i + 10);
+        const filter = chunk.map(id => `_msnfp_engagementopportunityid_value eq ${id}`).join(' or ');
+        try {
+          const r = await fetchOk(`/_api/msnfp_publicengagementopportunities?$select=msnfp_publicengagementopportunityid,_msnfp_engagementopportunityid_value&$filter=${encodeURIComponent(filter)}`, { headers: { Accept: 'application/json' } });
+          const j = await r.json();
+          (j.value || []).forEach(x => publicIdCache.set(x._msnfp_engagementopportunityid_value, x.msnfp_publicengagementopportunityid));
+        } catch (e) { /* same story */ }
+        chunk.forEach(id => { if (!publicIdCache.has(id)) publicIdCache.set(id, null); });
+      }
+      return new Map(ids.map(id => [id, publicIdCache.get(id) || null]));
+    }
+
+    // 9. The public event page. Every "Shift Options" row carries a JSON blob
+    //    with the shift definition: id, name (MFR / Apprentice / whatever the
+    //    event creator typed), start, end, maxVolunteers (-1 = no cap) and how
+    //    many have booked. Also the description, the qualifications list and
+    //    the location block. This is the only place the shift *definitions*
+    //    are visible to a group lead.
+    const publicEvent = publicId => memo('public:' + publicId, async () => {
+      const doc = await getDoc(`/engagement/?id=${encodeURIComponent(publicId)}`);
+      const shifts = [...doc.querySelectorAll('input[type="checkbox"][data-value]')].map(cb => {
+        let v; try { v = JSON.parse(cb.getAttribute('data-value')); } catch (e) { return null; }
+        if (!v || !v.id) return null;
+        const max = Number(v.maxVolunteers);
+        return { id: v.id, name: decodeEntities(String(v.name || '')).trim(), start: toDate(v.startDate), end: toDate(v.endDate), max: isFinite(max) && max >= 0 ? max : null, booked: Number(v.numVolunteers) || 0, cancelled: !!v.isCancelled };
+      }).filter(Boolean);
+      const afterHeading = title => {
+        const h = [...doc.querySelectorAll('h2')].find(n => n.textContent.trim() === title); if (!h) return [];
+        const out = []; for (let n = h.nextElementSibling; n && n.tagName !== 'H2'; n = n.nextElementSibling) out.push(...(n.tagName === 'UL' || n.tagName === 'OL' ? [...n.querySelectorAll('li')] : [n]).map(x => x.textContent.replace(/\s+/g, ' ').trim()));
+        return out.filter(Boolean);
+      };
+      const quals = afterHeading('Qualifications').filter(q => !/^none$/i.test(q));
+      const m = /origEventStartDateTime\s*=\s*new Date\("([^"]+)"\)/.exec([...doc.scripts].map(x => x.textContent).join('\n'));
+      return { publicId, shifts, description: (doc.querySelector('.engagementDescription')?.textContent || '').replace(/\s+/g, ' ').trim(), quals, location: afterHeading('Location').join(' '), start: m ? toDate(m[1]) : null };
+    });
+
+    // 10. Event requests still waiting on the group lead, with the organizer
+    //     and on-site contact from the request form. This is the only route
+    //     to those details: once a request is approved VMS stops showing it
+    //     anywhere a group lead can reach. (Yes, the contact phone number
+    //     disappears from view at exactly the point you start needing it.)
+    const pendingRequests = () => memo('pendingRequests', async () => {
+      const doc = await getDoc(`/en-US/group-lead/dashboard/?groupid=${GROUP_ID}`);
+      const grid = gridsIn(doc).find(g => /eventrequest/i.test(g.rel));
+      if (!grid) return [];
+      const rows = await subgridRows(grid, { pageSize: 100, maxPages: 3 });
+      const read = async r => {
+        const id = r.sjavms_eventrequestid || r.id;
+        const base = { requestId: id, name: r.sjavms_name || '', start: toDate(r.sjavms_eventstartdate__raw || r.sjavms_eventstartdate), locationName: r.sjavms_address1name || '', status: r.statuscode || '' };
+        try {
+          const fd = await getDoc(`/en-US/group-lead/event-general/?id=${encodeURIComponent(id)}&groupid=${GROUP_ID}`);
+          const v = fid => (fd.getElementById(fid)?.value || '').trim();
+          const yes = fid => !!fd.getElementById(fid + '_1')?.checked;
+          const person = (f, l, e, p, org) => { const n = [v(f), v(l)].filter(Boolean).join(' '); return (n || v(e) || v(p)) ? { name: n, email: v(e), phone: v(p), organization: org ? v(org) : '' } : null; };
+          return { ...base,
+            end: toDate(v('sjavms_eventenddate')) || null,
+            description: v('sjavms_eventdescription'),
+            maxAttendees: v('sjavms_maxparticipants'),
+            organizer: person('sjavms_firstname', 'sjavms_lastname', 'sjavms_email', 'sjavms_phone', 'sjavms_organization'),
+            contact: person('sjavms_coordinatorfirstname', 'sjavms_coordinatorlastname', 'sjavms_coordinatoremail', 'sjavms_coordinatorphone'),
+            address: { name: v('sjavms_address1name'), street: [v('sjavms_address1line1'), v('sjavms_address1line2'), v('sjavms_address1line3')].filter(Boolean).join(', '), city: v('sjavms_address1city'), province: v('sjavms_address1stateprovince'), postal: v('sjavms_address1zippostalcode') },
+            onSite: { firstAidRoom: yes('sjavms_firstaidroomtent'), volunteerArea: yes('sjavms_designatedvolunteerarea'), water: yes('sjavms_cleandrinkingwater'), telephone: yes('sjavms_telephone'), cellReception: yes('sjavms_cellphonereception'), parking: yes('sjavms_parking'), bathrooms: yes('sjavms_bathrooms'), food: yes('sjavms_foodforvolunteers'), shade: yes('sjavms_shadedareaifoutside'), otherAgencies: yes('sjavms_willotherhealthcareagenciesbeonsite'), seating: yes('sjavms_tableschairsseating'), siteMap: yes('sjavms_sitemapifapplicable'), power: yes('sjavms_electricalpowersupply') },
+          };
+        } catch (e) { return { ...base, error: e.message || String(e) }; }
+      };
+      const out = [];
+      for (let i = 0; i < rows.length; i += 4) out.push(...await Promise.all(rows.slice(i, i + 4).map(read)));
+      return out;
+    });
+
+    return { upcomingEngagements, groupEvents, eventDetail, roster, hours, certifications, eventExtras, publicIdsFor, publicEvent, pendingRequests,
+      clear: () => { cache.clear(); extrasCache.clear(); publicIdCache.clear(); token = null; } };
   })();
   D.VMS = VMS;

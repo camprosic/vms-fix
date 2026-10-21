@@ -1,4 +1,6 @@
   // --- ui -------------------------------------------------------------
+  // No framework. innerHTML + template strings + esc() on anything that came
+  // from VMS, then bind events after. Its a userscript, not a startup.
   const state = { tab: 'events', evSet: 'upcoming', openEvent: null, hoursWin: '', hoursBy: 'volunteer', q: '', certFilter: 'all', sort: {}, rosterSel: null };
   let root = null, main = null;
 
@@ -18,8 +20,9 @@
   }
   const matches = (q, ...fields) => !q || fields.some(f => norm(f).includes(norm(q)));
 
-  // Each render gets a ticket; a slow tab that finishes after you've already
-  // switched away must not paint over the new one.
+  // Each render gets a ticket. A slow tab that finishes loading after you've
+  // already clicked somewhere else must not paint over the new one (it did,
+  // once, and it was confusing as hell).
   let renderTicket = 0;
   function render() {
     const ticket = ++renderTicket;
@@ -28,6 +31,6 @@
     const tab = TABS.find(t => t.id === state.tab) || TABS[0];
     Promise.resolve().then(() => tab.render()).catch(e => { if (ticket === renderTicket) main.innerHTML = `<div class="wrap"><div class="err"><b>Couldn't load data.</b> ${esc(e.message || e)}</div></div>`; });
   }
-  // Screens call this before writing to main after an await: if it returns
-  // false the user has moved on and the screen should just stop.
+  // Screens call this before touching main after an await - if it comes back
+  // false the person has moved on and the screen should just stop.
   const stillCurrent = tabId => state.tab === tabId;

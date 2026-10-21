@@ -40,7 +40,7 @@ function hoursPage(url) {
   const js = pg === 1 ? fx('hoursPage.js') : 'var totalRecordCount = 3;\n';
   return page(`<script>var portalId = "00000000-0000-0000-0000-000000000000";\nfunction getPendingShifts(){\n${js}\n}</script><table id="pendingShiftsTable"></table><ul id="pager"></ul>`);
 }
-const subgridFor = cfg => ({ events: 'subgridEvents.json', current: null, past: 'subgridEvents.json', adhoc: null, participations: 'subgridParticipations.json', schedules: 'subgridSchedules.json' })[cfg];
+const subgridFor = cfg => ({ events: 'subgridEvents.json', current: null, past: 'subgridEvents.json', adhoc: null, participations: 'subgridParticipations.json', schedules: 'subgridSchedules.json', requests: 'subgridRequests.json' })[cfg];
 
 function makeMock() {
   const overrides = [];
@@ -56,12 +56,24 @@ function makeMock() {
     if (u.includes('/_layout/tokenhtml')) return res('<input name="__RequestVerificationToken" value="TESTTOKEN">');
     if (u.includes('/en-US/get-engagements/')) return res(fx('getEngagements.json'));
     if (u.includes('/_api/msnfp_publicengagementopportunities')) {
-      // map every public id in the getEngagements fixture onto the first event id in the subgrid fixture
-      const ids = [...decodeURIComponent(u).matchAll(/eq ([0-9a-f-]{36})/g)].map(m => m[1]);
+      const du = decodeURIComponent(u);
+      const ids = [...du.matchAll(/eq ([0-9a-f-]{36})/g)].map(m => m[1]);
       const ev = JSON.parse(fx('subgridEvents.json')).Records[0].Id;
+      if (du.includes('_msnfp_engagementopportunityid_value eq')) {
+        // event id -> public id: every event gets a public id that is its own id with the first block flipped
+        return res(JSON.stringify({ value: ids.map(id => ({ msnfp_publicengagementopportunityid: 'pub' + id.slice(3), _msnfp_engagementopportunityid_value: id })) }), 'application/json');
+      }
+      // public id -> event id (map every public id in the getEngagements fixture onto the first event id in the subgrid fixture)
       return res(JSON.stringify({ value: ids.map((id, i) => ({ msnfp_publicengagementopportunityid: id, _msnfp_engagementopportunityid_value: i === 0 ? ev : id })) }), 'application/json');
     }
     if (u.includes('/en-US/group-lead/events/')) return res(eventsPage());
+    if (u.includes('/en-US/group-lead/dashboard/')) return res(page(gridDiv('Pending Approval', 'sjavms_msnfp_group_sjavms_eventrequest', 'requests')));
+    if (u.includes('/en-US/group-lead/event-general/')) return res(page(fx('requestForm.html')));
+    if (u.includes('/engagement/?id=')) return res(page(fx('publicEvent.html')));
+    if (u.includes('/_api/msnfp_engagementopportunities?')) {
+      const ids = [...decodeURIComponent(u).matchAll(/eq ([0-9a-f-]{36})/g)].map(m => m[1]);
+      return res(JSON.stringify({ value: ids.map(id => ({ msnfp_engagementopportunityid: id, msnfp_street1: '64 Melrose Ave N', msnfp_city: 'Hamilton', msnfp_stateprovince: 'ON', msnfp_zippostalcode: 'L8L 8C1', msnfp_shortdescription: 'Tiger Cat CFL Game' })) }), 'application/json');
+    }
     if (u.includes('/en-US/group-lead/event-summary/')) return res(eventSummaryPage());
     if (u.includes('/en-US/group-lead/hours/')) return res(hoursPage(u));
     if (u.includes('/_services/entity-subgrid-data.json/')) {

@@ -14,41 +14,53 @@
 
 /*
  * Cam's VMS Console
+ * Cam Prosic - Deputy Chief Ops, SJA Hamilton D0007
  *
- * The national VMS rollout gave group leads a dashboard that shows "Pending
- * Approval" and "Pending Publish" and not much else. Everything a unit
- * actually needs week to week - who's on Saturday's event, are we short,
- * whose certs lapse next month, who's done what this year - is in the
- * database, it's just spread across six pages and five csv downloads.
- * I'd rather this had shipped with the product. It didn't, so here we are.
+ * Built out of spite, mostly. National rolled out VMS, told us it was the
+ * future, and gave group leads a dashboard with "Pending Approval" and
+ * "Pending Publish" on it and basically nothing else. Everything I actually
+ * need on a Tuesday night - whos on the Ti-Cats game saturday, are we short,
+ * whose MFR cert dies next month, how many hours did someone do this year -
+ * is all sitting in the database. Its just spread across six pages and five
+ * seperate csv downloads and you have to click through every single one.
  *
- * Everything is read off the same pages and feeds the portal already serves
- * to a signed-in group lead. The one write is approving reported shift hours
- * (Hours tab), which goes through the portal's own approval form after you've
- * confirmed exactly what's about to change.
+ * I get that its a national platform with a hundred programs to serve and a
+ * small team behind it. I still shouldnt have to write this. But here we are.
+ *
+ * Nothing clever: this reads the exact same pages and feeds the portal already
+ * gives a signed in group lead and puts them on one screen. The one thing it
+ * writes back is shift hour approvals (Hours tab) and that goes through the
+ * portals own approval form, after you've read a list of exactly whats about
+ * to change and said yes.
+ *
+ * If you're from another unit and want this - change GROUP_ID below and
+ * you're done. Hope its useful.
  */
 (function () {
   'use strict';
-  // Tampermonkey runs us in a sandbox once a GM_ function is granted; the real
-  // page window is unsafeWindow. Fall back to window for the bookmarklet route.
+  // Tampermonkey sandboxes the script once you ask for a GM_ function, so the
+  // real page window is unsafeWindow. window is for the bookmarklet route
+  // (learned this the hard way on Safari).
   const W = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
   if (W.D0007) return;
 
   // --- config ---------------------------------------------------------
-  // Group id for Hamilton-Wentworth Division. Grab it from the groupid= param
-  // on any Group Lead page if it ever changes.
+  // Our group id (Hamilton-Wentworth Division = D0007). Its in the groupid=
+  // param on every Group Lead page if it ever changes or you're another unit.
   const GROUP_ID = 'cf450413-327a-ed11-81ad-0022486d6297'; // HAMILTON-WENTWORTH DIVISION (D0007)
   const APP_TITLE = "Cam's VMS Console";
   const TZ = 'America/Toronto';
   const CERT_WARN_DAYS = 90;
   const SITE_ID = '24684e99-f092-4556-8b54-060fd532e73b'; // portal website id, used in the subgrid endpoint path
 
-  // Modules register themselves here (data modules on D, screens on TABS) so a
-  // new screen is one file in src/ and nothing else has to change.
+  // Modules register themselves here (data stuff on D, screens on TABS) so
+  // adding a screen is one new file in src/ and nothing else to touch.
   const D = {};
   const TABS = [];   // { id, label, render: async () => void }
 
   // --- small helpers ----------------------------------------------------
+  // The usual pile. toDate is the important one - VMS hands back dates in
+  // three different formats depending on which page you asked.
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const el = (tag, attrs = {}, html = '') => { const n = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (k === 'class') n.className = v; else if (k.startsWith('on')) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v); } n.innerHTML = html; return n; };
   const toDate = v => {
@@ -82,42 +94,6 @@
     const head = (rows.shift() || []).map(h => h.trim());
     return rows.map(r => Object.fromEntries(head.map((h, i) => [h, (r[i] ?? '').trim()])));
   }
-
-  // --- local store ------------------------------------------------------
-  // Unit-side info that VMS has no fields for: meet times, kits, vehicles,
-  // coordinator, row colours, who's Command/Driver/Sr, etc. Lives in
-  // localStorage on this browser only. Export/import moves it between people.
-  const Store = (() => {
-    const KEY = 'camsvms.v1';
-    const SECTIONS = ['schedule', 'members', 'settings'];
-    let data = null;
-    function load() {
-      if (data) return data;
-      try { data = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { data = {}; }
-      if (!data || typeof data !== 'object') data = {};
-      SECTIONS.forEach(k => { if (!data[k] || typeof data[k] !== 'object') data[k] = {}; });
-      return data;
-    }
-    function save() { try { localStorage.setItem(KEY, JSON.stringify(load())); } catch (e) { /* private mode, quota, whatever - keep going in memory */ } }
-    const get = (section, key) => load()[section][key];
-    const set = (section, key, value) => {
-      const d = load();
-      if (value === undefined || value === null) delete d[section][key]; else d[section][key] = value;
-      save();
-    };
-    // merge a partial object into an entry (handy for one-field edits)
-    const patch = (section, key, partial) => set(section, key, { ...(get(section, key) || {}), ...partial });
-    const all = section => ({ ...load()[section] });
-    const exportJSON = () => JSON.stringify({ exported: new Date().toISOString(), ...load() }, null, 2);
-    const importJSON = (text, { merge = true } = {}) => {
-      const inc = JSON.parse(text); const d = load();
-      SECTIONS.forEach(k => { const src = inc[k] && typeof inc[k] === 'object' ? inc[k] : {}; d[k] = merge ? { ...d[k], ...src } : { ...src }; });
-      save();
-    };
-    const reset = () => { data = {}; SECTIONS.forEach(k => data[k] = {}); save(); };
-    return { get, set, patch, all, exportJSON, importJSON, reset, KEY };
-  })();
-  D.Store = Store;
 
   // --- data layer -------------------------------------------------------
   // Everything below is a plain same-origin fetch using whatever session the
@@ -309,275 +285,127 @@
       return rows;
     });
 
-    return { upcomingEngagements, groupEvents, eventDetail, roster, hours, certifications, clear: () => { cache.clear(); token = null; } };
+    // 7. The few event columns the web api still exposes: address and the short
+    //    description. Batched ten ids per call, cached per id.
+    const extrasCache = new Map();
+    async function eventExtras(ids) {
+      const need = [...new Set(ids)].filter(id => id && !extrasCache.has(id));
+      for (let i = 0; i < need.length; i += 10) {
+        const chunk = need.slice(i, i + 10);
+        const filter = chunk.map(id => `msnfp_engagementopportunityid eq ${id}`).join(' or ');
+        try {
+          const r = await fetchOk(`/_api/msnfp_engagementopportunities?$select=msnfp_engagementopportunityid,msnfp_street1,msnfp_city,msnfp_stateprovince,msnfp_zippostalcode,msnfp_shortdescription&$filter=${encodeURIComponent(filter)}`, { headers: { Accept: 'application/json' } });
+          const j = await r.json();
+          (j.value || []).forEach(x => extrasCache.set(x.msnfp_engagementopportunityid, { street: x.msnfp_street1 || '', city: x.msnfp_city || '', province: x.msnfp_stateprovince || '', postal: x.msnfp_zippostalcode || '', description: x.msnfp_shortdescription || '' }));
+        } catch (e) { /* the web api gets narrowed without notice; the address column just goes blank */ }
+        chunk.forEach(id => { if (!extrasCache.has(id)) extrasCache.set(id, null); });
+      }
+      return new Map(ids.map(id => [id, extrasCache.get(id) || null]));
+    }
+
+    // 8. Event id -> public engagement id (the id the public /engagement/ page wants).
+    const publicIdCache = new Map();
+    async function publicIdsFor(ids) {
+      const need = [...new Set(ids)].filter(id => id && !publicIdCache.has(id));
+      for (let i = 0; i < need.length; i += 10) {
+        const chunk = need.slice(i, i + 10);
+        const filter = chunk.map(id => `_msnfp_engagementopportunityid_value eq ${id}`).join(' or ');
+        try {
+          const r = await fetchOk(`/_api/msnfp_publicengagementopportunities?$select=msnfp_publicengagementopportunityid,_msnfp_engagementopportunityid_value&$filter=${encodeURIComponent(filter)}`, { headers: { Accept: 'application/json' } });
+          const j = await r.json();
+          (j.value || []).forEach(x => publicIdCache.set(x._msnfp_engagementopportunityid_value, x.msnfp_publicengagementopportunityid));
+        } catch (e) { /* same story */ }
+        chunk.forEach(id => { if (!publicIdCache.has(id)) publicIdCache.set(id, null); });
+      }
+      return new Map(ids.map(id => [id, publicIdCache.get(id) || null]));
+    }
+
+    // 9. The public event page. Every "Shift Options" row carries a JSON blob
+    //    with the shift definition: id, name (MFR / Apprentice / whatever the
+    //    event creator typed), start, end, maxVolunteers (-1 = no cap) and how
+    //    many have booked. Also the description, the qualifications list and
+    //    the location block. This is the only place the shift *definitions*
+    //    are visible to a group lead.
+    const publicEvent = publicId => memo('public:' + publicId, async () => {
+      const doc = await getDoc(`/engagement/?id=${encodeURIComponent(publicId)}`);
+      const shifts = [...doc.querySelectorAll('input[type="checkbox"][data-value]')].map(cb => {
+        let v; try { v = JSON.parse(cb.getAttribute('data-value')); } catch (e) { return null; }
+        if (!v || !v.id) return null;
+        const max = Number(v.maxVolunteers);
+        return { id: v.id, name: decodeEntities(String(v.name || '')).trim(), start: toDate(v.startDate), end: toDate(v.endDate), max: isFinite(max) && max >= 0 ? max : null, booked: Number(v.numVolunteers) || 0, cancelled: !!v.isCancelled };
+      }).filter(Boolean);
+      const afterHeading = title => {
+        const h = [...doc.querySelectorAll('h2')].find(n => n.textContent.trim() === title); if (!h) return [];
+        const out = []; for (let n = h.nextElementSibling; n && n.tagName !== 'H2'; n = n.nextElementSibling) out.push(...(n.tagName === 'UL' || n.tagName === 'OL' ? [...n.querySelectorAll('li')] : [n]).map(x => x.textContent.replace(/\s+/g, ' ').trim()));
+        return out.filter(Boolean);
+      };
+      const quals = afterHeading('Qualifications').filter(q => !/^none$/i.test(q));
+      const m = /origEventStartDateTime\s*=\s*new Date\("([^"]+)"\)/.exec([...doc.scripts].map(x => x.textContent).join('\n'));
+      return { publicId, shifts, description: (doc.querySelector('.engagementDescription')?.textContent || '').replace(/\s+/g, ' ').trim(), quals, location: afterHeading('Location').join(' '), start: m ? toDate(m[1]) : null };
+    });
+
+    // 10. Event requests still waiting on the group lead, with the organizer
+    //     and on-site contact from the request form. This is the only route
+    //     to those details: once a request is approved VMS stops showing it
+    //     anywhere a group lead can reach. (Yes, the contact phone number
+    //     disappears from view at exactly the point you start needing it.)
+    const pendingRequests = () => memo('pendingRequests', async () => {
+      const doc = await getDoc(`/en-US/group-lead/dashboard/?groupid=${GROUP_ID}`);
+      const grid = gridsIn(doc).find(g => /eventrequest/i.test(g.rel));
+      if (!grid) return [];
+      const rows = await subgridRows(grid, { pageSize: 100, maxPages: 3 });
+      const read = async r => {
+        const id = r.sjavms_eventrequestid || r.id;
+        const base = { requestId: id, name: r.sjavms_name || '', start: toDate(r.sjavms_eventstartdate__raw || r.sjavms_eventstartdate), locationName: r.sjavms_address1name || '', status: r.statuscode || '' };
+        try {
+          const fd = await getDoc(`/en-US/group-lead/event-general/?id=${encodeURIComponent(id)}&groupid=${GROUP_ID}`);
+          const v = fid => (fd.getElementById(fid)?.value || '').trim();
+          const yes = fid => !!fd.getElementById(fid + '_1')?.checked;
+          const person = (f, l, e, p, org) => { const n = [v(f), v(l)].filter(Boolean).join(' '); return (n || v(e) || v(p)) ? { name: n, email: v(e), phone: v(p), organization: org ? v(org) : '' } : null; };
+          return { ...base,
+            end: toDate(v('sjavms_eventenddate')) || null,
+            description: v('sjavms_eventdescription'),
+            maxAttendees: v('sjavms_maxparticipants'),
+            organizer: person('sjavms_firstname', 'sjavms_lastname', 'sjavms_email', 'sjavms_phone', 'sjavms_organization'),
+            contact: person('sjavms_coordinatorfirstname', 'sjavms_coordinatorlastname', 'sjavms_coordinatoremail', 'sjavms_coordinatorphone'),
+            address: { name: v('sjavms_address1name'), street: [v('sjavms_address1line1'), v('sjavms_address1line2'), v('sjavms_address1line3')].filter(Boolean).join(', '), city: v('sjavms_address1city'), province: v('sjavms_address1stateprovince'), postal: v('sjavms_address1zippostalcode') },
+            onSite: { firstAidRoom: yes('sjavms_firstaidroomtent'), volunteerArea: yes('sjavms_designatedvolunteerarea'), water: yes('sjavms_cleandrinkingwater'), telephone: yes('sjavms_telephone'), cellReception: yes('sjavms_cellphonereception'), parking: yes('sjavms_parking'), bathrooms: yes('sjavms_bathrooms'), food: yes('sjavms_foodforvolunteers'), shade: yes('sjavms_shadedareaifoutside'), otherAgencies: yes('sjavms_willotherhealthcareagenciesbeonsite'), seating: yes('sjavms_tableschairsseating'), siteMap: yes('sjavms_sitemapifapplicable'), power: yes('sjavms_electricalpowersupply') },
+          };
+        } catch (e) { return { ...base, error: e.message || String(e) }; }
+      };
+      const out = [];
+      for (let i = 0; i < rows.length; i += 4) out.push(...await Promise.all(rows.slice(i, i + 4).map(read)));
+      return out;
+    });
+
+    return { upcomingEngagements, groupEvents, eventDetail, roster, hours, certifications, eventExtras, publicIdsFor, publicEvent, pendingRequests,
+      clear: () => { cache.clear(); extrasCache.clear(); publicIdCache.clear(); token = null; } };
   })();
   D.VMS = VMS;
 
-  // --- event schedule ---------------------------------------------------
-  // The unit's monthly Event Schedule: one row per event day, who's on it,
-  // when to meet, what kit, which truck. Until now that was an Excel sheet
-  // filled in by hand from the VMS event pages, one event at a time, every
-  // month. VMS has the event, the location, the sign-ups and the shifts. It has
-  // no field for anything else on the sheet (meet-at-St.John time, coordinator,
-  // requirement, notes, kits, vehicles, row colour, who's Command/Driver/Sr),
-  // so those live in Store and get merged over the VMS side here.
-  const Schedule = (() => {
-    const COLUMNS = ['Event', 'Date', 'Meet @ St.John', 'Meet @ Event', 'Approx. End', 'Event Location', 'On-Site Coordinator', 'Event Notes', 'Medical First Responders', 'Apprentice', 'Equipment', 'Vehicle'];
-    // The sheet's row fills. Red and cyan are in use but nobody wrote down what for.
-    const COLOURS = [
-      { hex: '#FFFF00', label: 'Stadium / sports' },
-      { hex: '#00FF00', label: 'Community event' },
-      { hex: '#FF00FF', label: 'Training night' },
-      { hex: '#4A86E8', label: 'Multi-day / provincial' },
-      { hex: '#FF0000', label: 'Red' },
-      { hex: '#FF9900', label: 'Training exercise' },
-      { hex: '#00FFFF', label: 'Cyan' },
-    ];
-    const TAGS = ['C', 'D', 'Sr'];
-    const FIELDS = ['meetSJ', 'meetEvent', 'approxEnd', 'coordinator', 'notes', 'requirement', 'equipment', 'vehicle', 'colour'];
-    const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-
-    // --- dates. Everything is keyed on the Eastern calendar date, worked out
-    // through Intl so it doesn't matter what zone the browser thinks it's in.
-    const F_NUM = new Intl.DateTimeFormat('en-US', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-    const F_LABEL = new Intl.DateTimeFormat('en-US', { timeZone: TZ, weekday: 'short', month: 'short', day: 'numeric' });
-    const partsOf = (fmt, d) => { const o = {}; fmt.formatToParts(d).forEach(p => { if (p.type !== 'literal') o[p.type] = p.value; }); return o; };
-    const ymd = v => { const d = toDate(v); if (!d) return ''; const p = partsOf(F_NUM, d); return `${p.year}-${p.month}-${p.day}`; };
-    const hm = v => { const d = toDate(v); if (!d) return ''; const p = partsOf(F_NUM, d); return `${p.hour}:${p.minute}`; };
-    // "Sat Oct 24" for a YYYY-MM-DD. Noon UTC is still that date in Eastern.
-    const dayLabel = s => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || ''); if (!m) return ''; const p = partsOf(F_LABEL, new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12))); return `${p.weekday} ${p.month} ${p.day}`; };
-    const today = () => { const p = partsOf(F_NUM, new Date()); return { year: +p.year, month: +p.month }; };
-    const monthName = m => MONTHS[m - 1] || '';
-    const monthLabel = (y, m) => `${monthName(m)} ${y}`;
-
-    const isCancelled = s => /cancel/i.test(s || '');
-    const isWaitlist = s => /wait ?list/i.test(s || '');
-    const isNoShow = s => /no.?show/i.test(s || '');
-
-    // --- roles and tags. Apprentice unless there's a current MFR cert on file,
-    // and whatever is set on the Roster tab wins over that.
-    const MFR_RE = /medical first responder/i;
-    function autoRole(name, certs = [], now = Date.now()) {
-      const n = norm(name);
-      const ok = certs.some(c => norm(c.name) === n && MFR_RE.test(c.qualification || '') && (!c.expiry || ((toDate(c.expiry)?.getTime() ?? 0) + 86400000) > now));
-      return ok ? 'MFR' : 'Apprentice';
-    }
-    function memberInfo(name, { certs = [], members = {}, now } = {}) {
-      const m = members[norm(name)] || {};
-      const auto = autoRole(name, certs, now);
-      const set = m.role === 'MFR' || m.role === 'Apprentice';
-      return { role: set ? m.role : auto, autoRole: auto, roleSet: set, tags: TAGS.filter(t => Array.isArray(m.tags) && m.tags.includes(t)), unit: String(m.unit || '').trim() };
-    }
-
-    // --- one day's shifts → meet time, end time, people, partial-shift notes.
-    // The "main" shift is the start time most people share (earliest on a tie)
-    // and its most common length. Anyone whose window differs is partial: they
-    // get a star on their name and a line in the notes, one star-group per
-    // distinct window in the order they turn up.
-    function deriveDay(shifts) {
-      const by = new Map();
-      shifts.forEach(s => {
-        const start = toDate(s.start); if (!start || isCancelled(s.status)) return;
-        const end = new Date(start.getTime() + Math.max(0, num(s.hours)) * 3600000);
-        const k = norm(s.name);
-        const cur = by.get(k);
-        if (!cur) by.set(k, { name: s.name, start, end, hours: num(s.hours), status: s.status || '' });
-        else { if (start < cur.start) cur.start = start; if (end > cur.end) cur.end = end; cur.hours += num(s.hours); if (isNoShow(cur.status) && !isNoShow(s.status)) cur.status = s.status || ''; }
-      });
-      const all = [...by.values()].sort((a, b) => a.start - b.start || norm(a.name).localeCompare(norm(b.name)));
-      const waitlisted = all.filter(p => isWaitlist(p.status)).map(p => ({ name: p.name, status: p.status }));
-      const people = all.filter(p => !isWaitlist(p.status));
-      const counted = people.filter(p => !isNoShow(p.status));
-      const pool = counted.length ? counted : people;
-      const mode = (items, key, tie) => { const c = new Map(); items.forEach(x => c.set(key(x), (c.get(key(x)) || 0) + 1)); let best = null; for (const x of items) { const k = key(x); if (!best || c.get(k) > best.n || (c.get(k) === best.n && tie(x, best.x))) best = { x, n: c.get(k), k }; } return best ? best.x : null; };
-      const lead = mode(pool, p => p.start.getTime(), (a, b) => a.start < b.start);
-      const mainStart = lead ? lead.start : null;
-      const same = pool.filter(p => mainStart && p.start.getTime() === mainStart.getTime());
-      const lengthLead = mode(same, p => p.hours, (a, b) => a.hours > b.hours);
-      const mainEnd = mainStart ? new Date(mainStart.getTime() + (lengthLead ? lengthLead.hours : 0) * 3600000) : null;
-      const meetEvent = mainStart ? hm(mainStart) : '';
-      const approxEnd = mainEnd && mainEnd > mainStart ? hm(mainEnd) : '';
-      const notes = [], variants = new Map();
-      const out = people.map(p => {
-        const partialOf = mainStart && (p.start.getTime() !== mainStart.getTime() || p.end.getTime() !== mainEnd.getTime());
-        let partial = null;
-        if (partialOf) {
-          const vk = p.start.getTime() + '-' + p.end.getTime();
-          if (!variants.has(vk)) {
-            const marker = '*'.repeat(variants.size + 2);
-            variants.set(vk, marker);
-            notes.push(`${marker}${hm(p.start)} to ${p.end.getTime() === mainEnd.getTime() ? 'End' : hm(p.end)}`);
-          }
-          const marker = variants.get(vk);
-          partial = { start: hm(p.start), end: hm(p.end), marker, mark: marker.slice(1) };
-        }
-        return { name: p.name, start: p.start, end: p.end, hours: p.hours, status: p.status, partial };
-      });
-      return { meetEvent, approxEnd, mainStart, mainEnd, people: out, notes, waitlisted };
-    }
-
-    // --- one event (+ its detail) → one row per day it has shifts on. No
-    // shifts at all and it gets one row on its start date so it still shows up.
-    const peopleOrder = (a, b) => { const r = t => a.tags.includes(t) === b.tags.includes(t) ? 0 : a.tags.includes(t) ? -1 : 1; return r('C') || r('D') || norm(a.name).localeCompare(norm(b.name)); };
-    function eventRows(e, detail, ctx = {}) {
-      const d = detail || {};
-      const info = name => memberInfo(name, ctx);
-      const byDay = new Map();
-      (d.shifts || []).forEach(s => { if (isCancelled(s.status)) return; const k = ymd(s.start); if (!k) return; if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(s); });
-      const days = byDay.size ? [...byDay.keys()].sort() : [ymd(e.start)].filter(Boolean);
-      const scheduled = new Set((d.shifts || []).filter(s => !isCancelled(s.status)).map(s => norm(s.name)));
-      // Signed up but never given a shift, on any day. Worth a nudge.
-      const signedUpNoShift = (d.participants || []).filter(p => !isCancelled(p.status) && !/declin|reject/i.test(p.status || '') && !scheduled.has(norm(p.name))).map(p => ({ name: p.name, status: p.status, role: info(p.name).role }));
-      const startDay = ymd(e.start);
-      return days.map(date => {
-        const day = deriveDay(byDay.get(date) || []);
-        const people = day.people.map(p => ({ ...p, ...info(p.name) })).sort(peopleOrder);
-        const row = {
-          key: `${e.id}|${date}`, eventId: e.id, title: e.title || '', location: e.location || '', program: e.program || '', eventStatus: e.status || '',
-          date, dateLabel: dayLabel(date), eventStart: e.start || null, startMismatch: !!startDay && startDay !== date && byDay.size > 0 && date === days[0],
-          derived: { meetEvent: day.meetEvent, approxEnd: day.approxEnd, notes: day.notes },
-          people, signedUpNoShift, waitlisted: day.waitlisted.map(w => ({ ...w, role: info(w.name).role })), shiftCount: (byDay.get(date) || []).length,
-          error: d.error || '',
-        };
-        return withOverrides(row);
-      });
-    }
-
-    // Merge what's in Store over the derived values. Empty override = use VMS.
-    function withOverrides(row) {
-      const st = Store.get('schedule', row.key) || {};
-      const pick = (f, dflt = '') => { const v = st[f]; return v === undefined || v === null || String(v) === '' ? dflt : String(v); };
-      const out = { ...row, stored: { ...st } };
-      out.meetSJ = pick('meetSJ'); out.meetEvent = pick('meetEvent', row.derived.meetEvent); out.approxEnd = pick('approxEnd', row.derived.approxEnd);
-      out.coordinator = pick('coordinator'); out.notes = pick('notes'); out.requirement = pick('requirement'); out.equipment = pick('equipment'); out.vehicle = pick('vehicle');
-      const col = pick('colour').toUpperCase(); out.colour = COLOURS.some(c => c.hex === col) ? col : '';
-      out.edited = { meetEvent: !!pick('meetEvent') && pick('meetEvent') !== row.derived.meetEvent, approxEnd: !!pick('approxEnd') && pick('approxEnd') !== row.derived.approxEnd };
-      return out;
-    }
-
-    // Run fn over items with at most n in flight. The event-summary page is
-    // three fetches per event and there's no need to hit the portal with
-    // thirty of them at once.
-    async function pmap(items, fn, n = 4) {
-      const out = new Array(items.length); let i = 0;
-      await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const k = i++; out[k] = await fn(items[k], k); } }));
-      return out;
-    }
-
-    async function monthRows(year, month) {
-      const prefix = `${year}-${String(month).padStart(2, '0')}`;
-      const [ev, certs] = await Promise.all([VMS.groupEvents(), VMS.certifications().catch(() => [])]);
-      const members = Store.all('members');
-      const seen = new Set(), events = [];
-      ['current', 'upcoming', 'past'].forEach(k => (ev[k] || []).forEach(e => { if (e.id && !seen.has(e.id)) { seen.add(e.id); events.push(e); } }));
-      // Only open events that could have a day in this month: anything starting
-      // in the six weeks before it (a fair that runs across the month end) up to
-      // the end of it. Past events go back years and every one is three fetches.
-      const lo = ymd(new Date(Date.UTC(year, month - 1, 1) - 45 * 86400000)), hi = `${prefix}-31`;
-      const cand = events.filter(e => { const s = ymd(e.start); return s && s >= lo && s <= hi; });
-      const details = await pmap(cand, e => VMS.eventDetail(e.id).catch(err => ({ error: err.message || String(err), participants: [], shifts: [] })), 4);
-      const rows = [];
-      cand.forEach((e, i) => eventRows(e, details[i], { certs, members }).forEach(r => { if (r.date.startsWith(prefix)) rows.push(r); }));
-      rows.sort((a, b) => a.date.localeCompare(b.date) || a.meetEvent.localeCompare(b.meetEvent) || norm(a.title).localeCompare(norm(b.title)));
-      return rows;
-    }
-
-    // --- the sheet's cells
-    const formatName = p => `${p.name}${p.tags && p.tags.length ? ' ' + p.tags.join('/') : ''}${p.unit ? ` (${p.unit})` : ''}${p.partial ? p.partial.mark : ''}`;
-    const lines = s => String(s || '').split(/\r?\n/).map(x => x.trim()).filter(Boolean);
-    const eventNotes = r => [...lines(r.requirement), ...((r.derived && r.derived.notes) || []), ...lines(r.notes)].join('\n');
-    function rowCells(r) {
-      const names = role => (r.people || []).filter(p => p.role === role).map(formatName).join('\n');
-      return [r.title, r.dateLabel, r.meetSJ, r.meetEvent, r.approxEnd, r.location, r.coordinator, eventNotes(r), names('MFR'), names('Apprentice'), lines(r.equipment).join('\n'), lines(r.vehicle).join('\n')].map(v => String(v ?? ''));
-    }
-    // Header first, a blank spacer between dates like the sheet, cells with
-    // line breaks quoted so Excel and Sheets keep them in one cell.
-    function toWorkbookRows(rows, { spacers = true } = {}) {
-      const out = [COLUMNS.slice()], colours = ['']; let prev = null;
-      (rows || []).forEach(r => {
-        if (spacers && prev && prev !== r.date) { out.push(COLUMNS.map(() => '')); colours.push(''); }
-        out.push(rowCells(r)); colours.push(r.colour || ''); prev = r.date;
-      });
-      return { rows: out, colours };
-    }
-    const tsvCell = v => /[\t\n\r"]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
-    const toTSV = (rows, opts) => toWorkbookRows(rows, opts).rows.map(r => r.map(tsvCell).join('\t')).join('\n');
-
-    // --- .xlsx. The SheetJS community build writes cells but drops every
-    // style, and the fills are the one thing this sheet actually relies on.
-    // An xlsx is a zip of a few XML files, so this writes them directly
-    // (stored, no compression - a month is a few KB).
-    const WIDTHS = [28, 11, 9, 9, 9, 24, 18, 36, 26, 20, 12, 12];
-    const xmlEsc = s => String(s ?? '').replace(/[^\t\n\r\x20-￿]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    const colRef = i => { let s = ''; for (let n = i + 1; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + (n - 1) % 26) + s; return s; };
-    const utf8 = s => { const o = []; for (const ch of s) { const c = ch.codePointAt(0); if (c < 0x80) o.push(c); else if (c < 0x800) o.push(0xC0 | c >> 6, 0x80 | c & 63); else if (c < 0x10000) o.push(0xE0 | c >> 12, 0x80 | c >> 6 & 63, 0x80 | c & 63); else o.push(0xF0 | c >> 18, 0x80 | c >> 12 & 63, 0x80 | c >> 6 & 63, 0x80 | c & 63); } return Uint8Array.from(o); };
-    const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
-    const crc32 = b => { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = CRC[(c ^ b[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
-    function zipStored(files) {
-      const u16 = n => [n & 255, n >>> 8 & 255], u32 = n => [n & 255, n >>> 8 & 255, n >>> 16 & 255, n >>> 24 & 255];
-      const now = new Date(), tm = now.getHours() << 11 | now.getMinutes() << 5 | now.getSeconds() >> 1, dt = (now.getFullYear() - 1980) << 9 | (now.getMonth() + 1) << 5 | now.getDate();
-      const parts = [], central = []; let off = 0;
-      for (const f of files) {
-        const name = utf8(f.name), data = utf8(f.text), crc = crc32(data);
-        const local = Uint8Array.from([...u32(0x04034b50), ...u16(20), ...u16(0), ...u16(0), ...u16(tm), ...u16(dt), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(name.length), ...u16(0)]);
-        central.push(Uint8Array.from([...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0), ...u16(0), ...u16(tm), ...u16(dt), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(name.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(off)]), name);
-        parts.push(local, name, data); off += local.length + name.length + data.length;
-      }
-      const cdSize = central.reduce((a, b) => a + b.length, 0);
-      const end = Uint8Array.from([...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(files.length), ...u16(files.length), ...u32(cdSize), ...u32(off), ...u16(0)]);
-      const all = [...parts, ...central, end], out = new Uint8Array(all.reduce((a, b) => a + b.length, 0)); let p = 0; all.forEach(b => { out.set(b, p); p += b.length; });
-      return out;
-    }
-    function toXLSX(rows, { sheetName = 'Schedule' } = {}) {
-      const { rows: aoa, colours } = toWorkbookRows(rows);
-      const name = String(sheetName).replace(/[\[\]:*?\/\\]/g, '').slice(0, 31) || 'Schedule';
-      const styleOf = (ri, hex) => ri === 0 ? 1 : hex ? 2 + COLOURS.findIndex(c => c.hex === hex) : 0;
-      const sheetRows = aoa.map((cells, ri) => {
-        const s = styleOf(ri, colours[ri]);
-        const nLines = Math.max(1, ...cells.map((v, ci) => lines(v).reduce((a, l) => a + Math.max(1, Math.ceil(l.length / WIDTHS[ci])), 0)));
-        const cs = cells.map((v, ci) => v === '' ? (s ? `<c r="${colRef(ci)}${ri + 1}" s="${s}"/>` : '') : `<c r="${colRef(ci)}${ri + 1}" s="${s}" t="inlineStr"><is><t xml:space="preserve">${xmlEsc(v)}</t></is></c>`).join('');
-        return `<row r="${ri + 1}" ht="${15 * nLines + 3}" customHeight="1">${cs}</row>`;
-      }).join('');
-      const xml = (body) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n${body}`;
-      const sheet = xml(`<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ref="A1:${colRef(COLUMNS.length - 1)}${aoa.length}"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/><cols>${WIDTHS.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols><sheetData>${sheetRows}</sheetData><pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/><pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>`);
-      const fills = COLOURS.map(c => `<fill><patternFill patternType="solid"><fgColor rgb="FF${c.hex.slice(1)}"/><bgColor indexed="64"/></patternFill></fill>`).join('');
-      const align = '<alignment vertical="top" wrapText="1"/>';
-      const xfs = [`<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1">${align}</xf>`, `<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1">${align}</xf>`, ...COLOURS.map((c, i) => `<xf numFmtId="0" fontId="0" fillId="${i + 2}" borderId="0" xfId="0" applyFill="1" applyAlignment="1">${align}</xf>`)];
-      const styles = xml(`<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="${COLOURS.length + 2}"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>${fills}</fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="${xfs.length}">${xfs.join('')}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`);
-      return zipStored([
-        { name: '[Content_Types].xml', text: xml('<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>') },
-        { name: '_rels/.rels', text: xml('<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>') },
-        { name: 'xl/workbook.xml', text: xml(`<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${xmlEsc(name)}" sheetId="1" r:id="rId1"/></sheets></workbook>`) },
-        { name: 'xl/_rels/workbook.xml.rels', text: xml('<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>') },
-        { name: 'xl/styles.xml', text: styles },
-        { name: 'xl/worksheets/sheet1.xml', text: sheet },
-      ]);
-    }
-
-    return { COLUMNS, COLOURS, TAGS, FIELDS, monthRows, eventRows, deriveDay, withOverrides, memberInfo, autoRole, formatName, eventNotes, rowCells, toTSV, toWorkbookRows, toXLSX, ymd, hm, dayLabel, today, monthName, monthLabel };
-  })();
-  D.Schedule = Schedule;
-
   // --- approvals ---------------------------------------------------------
-  // The one place this script writes to VMS: approving (or no-showing,
-  // cancelling, correcting) the shifts volunteers have reported. In the portal
-  // that's Group Lead > Hours, ten rows a page, one modal per shift, three or
-  // four clicks each. After a busy weekend it's an evening's work, and most of
-  // it is clicking Submit on numbers you've already checked.
+  // The one place this writes to VMS: approving (or no-showing / cancelling /
+  // fixing) the shifts people reported. In the portal thats Group Lead > Hours,
+  // ten rows a page, one modal per shift, 3-4 clicks each. After a Ti-Cats
+  // weekend with 40 shifts thats my whole evening gone, and 95% of it is
+  // clicking Submit on a number I already checked against the event form.
+  // 143 pending when I started writing this. One hundred and forty three.
   //
-  // What the portal does, and what this copies exactly:
-  //  - The Hours page renders the pending list as inline JS: one block of
-  //    assignments per shift, then a jQuery append into the table. We read the
-  //    assignments with a regex. No eval.
-  //  - Each shift's Approve link opens an entity form (modal-form-template-path)
+  // What the portal does and what this copies, exactly:
+  //  - the Hours page renders the pending list as inline JS - one block of
+  //    variable assignments per shift and then a jQuery append into the table.
+  //    So we read the assignments with a regex. no eval, dont worry.
+  //  - each shifts Approve link opens an entity form (modal-form-template-path)
   //    over msnfp_participationschedule with start, end, hours and status.
-  //    Submit is a WebForms postback of that form. We fill the same four
-  //    fields on the same form and submit it the same way, then look for the
-  //    same "Submission completed successfully." the portal's modal code looks
-  //    for before it closes.
-  // Nothing goes near the web api and nothing is guessed about field names: if
-  // the form that comes back doesn't have the inputs we expect, or is for a
-  // different record, we stop before posting anything.
+  //    Submit is a plain WebForms postback. We fill the same four fields on the
+  //    same form, submit it the same way, and look for the same "Submission
+  //    completed successfully." that the portals own modal looks for before it
+  //    closes itself.
+  // Nothing goes near the web api (see 20-vms.js for why) and nothing about
+  // field names is guessed. If the form that comes back doesnt have the inputs
+  // we expect, or is for a different record than we asked for, it stops cold
+  // before posting anything. I'd rather it fail loudly than approve the wrong
+  // persons hours.
   const Approvals = (() => {
     const STATUS = { PENDING: '335940000', APPROVED: '335940001', NO_SHOW: '335940002', CANCELLED: '335940003', WAITLIST: '962220001' };
     const STATUS_LABEL = { [STATUS.PENDING]: 'Pending', [STATUS.APPROVED]: 'Shift Hours Approved', [STATUS.NO_SHOW]: 'No Show', [STATUS.CANCELLED]: 'Cancelled', [STATUS.WAITLIST]: 'Waitlist' };
@@ -589,8 +417,9 @@
     const formUrl = shiftId => `/_portal/modal-form-template-path/${PORTAL_ID}?id=${encodeURIComponent(shiftId)}&entityformid=${FORM_ID}`;
     const hoursUrl = (page, search) => `/en-US/group-lead/hours/?groupid=${GROUP_ID}&fetchPage=${page}&fetchSearch=${encodeURIComponent(search || '')}`;
 
-    // Same-origin fetch with the same session check VMS uses. VMS keeps its
-    // helpers private and this module has to POST, so it gets its own.
+    // Same-origin fetch with the same expired-session check the VMS module
+    // has. That module keeps its helpers to itself and this one needs to POST,
+    // so it gets its own copy. Not thrilled about the duplication either.
     async function fetchOk(url, { timeout = 30000, ...opts } = {}) {
       const ac = typeof AbortController === 'function' ? new AbortController() : null;
       const timer = ac && setTimeout(() => ac.abort(), timeout);
@@ -607,12 +436,13 @@
 
     // --- dates ---
     const pad = n => String(n).padStart(2, '0');
-    // CRM wants 2026-07-26T16:00:00.0000000Z: seven fraction digits, UTC.
+    // CRM wants 2026-07-26T16:00:00.0000000Z - seven fraction digits, UTC.
+    // Seven. Not six, not three. Seven.
     function toCrmIso(v) {
       const d = toDate(v); if (!d) throw new Error('Not a date: ' + v);
       return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}.0000000Z`;
     }
-    // Safari's Date.parse doesn't like seven fraction digits, so parse by hand.
+    // Safari's Date.parse chokes on those seven digits so this parses by hand.
     function fromCrmIso(s) {
       const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:?\d{2})?$/.exec(String(s ?? '').trim());
       if (!m) return toDate(s);
@@ -620,8 +450,9 @@
       if (m[8] && m[8] !== 'Z') { const o = /([+-])(\d{2}):?(\d{2})/.exec(m[8]); ms -= (o[1] === '-' ? -1 : 1) * ((+o[2]) * 60 + (+o[3])) * 60000; }
       return new Date(ms);
     }
-    // Eastern wall-clock <-> Date, for datetime-local inputs. The form itself
-    // takes UTC; these only exist so the screen can show and take local times.
+    // Eastern wall clock <-> Date for the datetime-local inputs. The form wants
+    // UTC, people want Eastern. These two exist so nobody has to do that math
+    // at 11pm.
     const partsIn = d => Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: TZ, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).formatToParts(d).filter(p => p.type !== 'literal').map(p => [p.type, +p.value]));
     function toLocalInput(v) { const d = toDate(v); if (!d) return ''; const p = partsIn(d); return `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}`; }
     function fromLocalInput(s) {
@@ -637,11 +468,13 @@
     }
 
     // --- the pending list ---
-    // One block per shift in the page's inline script, like:
+    // There is no feed for this. The page builds the table from inline JS,
+    // one block per shift, like:
     //   shiftId = "guid"; origStartDate = "Sun, 26 Jul 2026 16:00:00 GMT";
     //   volunteerName = "..."; eventName = "..."; actionButton = ...;
     //   $("#pendingShiftsTable").append("<tr><td>" + volunteerName + ... + startDateInEST + "</td><td>5</td> ...
-    // The hours only exist as that literal <td> in the append, so read it from there.
+    // The reported hours only exist as that literal <td> in the append string.
+    // Not as a variable. Just sitting in the HTML. So we read it from there.
     const unq = s => s.replace(/\\(.)/g, '$1');
     function parseHoursPage(html) {
       const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -658,9 +491,10 @@
       return { total, items };
     }
 
-    // Walks the Hours pages. Page 1 says how many records there are; the rest
-    // go four at a time. onPage gets { loaded, total, pages, truncated } as
-    // pages land, for a progress line.
+    // Walks the Hours pages. Page 1 tells us how many records there are, the
+    // rest get fetched four at a time. onPage gets { loaded, total, pages,
+    // truncated } as they land so the screen can show a progress line instead
+    // of just sitting there.
     async function pending({ search = '', maxPages = 50, onPage } = {}) {
       const first = parseHoursPage(await getText(hoursUrl(1, search)));
       const total = Math.max(first.total, first.items.length);
@@ -679,9 +513,10 @@
     }
 
     // --- the approval form ---
-    // Refuses to go further unless the page is the form we expect, for the
-    // record we asked for. Cheap insurance against VMS changing the form
-    // under us and this script posting into the wrong thing.
+    // Refuses to go any further unless the page is the form we expect, for the
+    // record we asked for. Cheap insurance against national changing the form
+    // under us (they will, eventually, without telling anyone) and this thing
+    // posting into the wrong place.
     function checkForm(doc, shiftId) {
       const idInput = doc.getElementById('EntityFormControl_EntityFormView_EntityID');
       if (!idInput) throw new Error('The approval form has no record id field. VMS may have changed the form; not posting.');
@@ -704,12 +539,13 @@
       const status = sel.value || (sel.querySelector('option[selected]')?.value ?? '');
       const hraw = v('sjavms_hours').trim();
       if (hraw && !/^\d+(\.\d+)?$/.test(hraw)) throw new Error(`The form's hours value "${hraw}" isn't a plain number; not touching this shift.`);
-      return { shiftId, participation: v('msnfp_participationid_name'), scheduleName: v('msnfp_engagementopportunityscheduleid_name'), start: fromCrmIso(v('sjavms_start')), end: fromCrmIso(v('sjavms_end')), hours: hraw ? Number(hraw) : 0, status, statusOptions };
+      return { shiftId, participation: v('msnfp_participationid_name'), scheduleName: v('msnfp_engagementopportunityscheduleid_name'), scheduleId: v('msnfp_engagementopportunityscheduleid'), participationId: v('msnfp_participationid'), start: fromCrmIso(v('sjavms_start')), end: fromCrmIso(v('sjavms_end')), hours: hraw ? Number(hraw) : 0, status, statusOptions };
     }
-    // Belt and braces at post time: the form we're about to submit must still
-    // be Pending, for the volunteer we think it is, and (if the caller tells
-    // us what it read earlier) unchanged since then. Another lead could have
-    // approved it in the meantime; we don't paint over that.
+    // Belt and suspenders at post time: the form we're about to submit has to
+    // still be Pending, for the volunteer we think it is, and (if the caller
+    // tells us what it read earlier) unchanged since then. Another lead can
+    // approve the same shift while you're looking at it - we dont paint over
+    // that, we bail and tell you.
     function verifyLive(doc, shiftId, expect) {
       if (!expect) return;
       const live = readForm(doc, shiftId);
@@ -723,10 +559,11 @@
     }
     const loadForm = async shiftId => readForm(await getDoc(formUrl(shiftId)), shiftId);
 
-    // Pure. Works out what the four fields should be from the loaded form plus
-    // whatever changed, and refuses the combinations VMS would reject or that
-    // are obviously wrong. The screen calls this on every edit so the row
-    // always shows exactly what would be sent.
+    // Pure function. Works out what the four fields should be from the loaded
+    // form plus whatever you changed, and refuses the combos VMS would reject or
+    // that are obviously wrong (negative hours, end before start, a 30 hour
+    // shift...). The screen runs this on every keystroke so what you see in
+    // the row is exactly what gets sent.
     function plan(form, changes = {}) {
       const status = String(changes.status ?? form.status ?? STATUS.PENDING);
       if (!STATUS_LABEL[status]) throw new Error(`"${status}" is not a shift status VMS knows`);
@@ -739,8 +576,8 @@
       if (given(changes.end) && !end) throw new Error('Shift end is not a valid date');
       if (hours !== null && hours < 0) throw new Error('Hours can\'t be negative');
       if (hours === null && end === null) {
-        // Nothing about the length changed: keep the form's hours, and its end
-        // too unless the start moved (then the whole shift moves).
+        // Nothing about the length changed - keep the forms hours, and its end
+        // too unless the start moved (then the whole shift slides).
         hours = Number(form.hours) || 0;
         const fs = toDate(form.start);
         if (fs && fs.getTime() === start.getTime()) end = toDate(form.end);
@@ -755,9 +592,9 @@
     }
 
     // --- submitting ---
-    // Sets the four inputs on a (parsed or live) form document and fires
-    // change on each, the way a person's edits would. Throws if the status
-    // isn't one of the form's options.
+    // Sets the four inputs on a (parsed or live) form document and fires change
+    // on each one, same as if someone typed it. Throws if the status isnt one
+    // of the forms options.
     function fillForm(doc, fields) {
       for (const [id, val] of Object.entries(fields)) {
         const n = doc.getElementById(id);
@@ -766,7 +603,8 @@
         const ev = doc.createEvent('Event'); ev.initEvent('change', true, true); n.dispatchEvent(ev);
       }
     }
-    // What the portal's modal checks for after the postback, and what we check.
+    // What the portals own modal checks for after the postback. So its what we
+    // check for too - no guessing.
     function readResult(doc) {
       const msg = (doc.getElementById('MessageLabel')?.textContent || '').trim();
       if (msg === SUCCESS) return { ok: true };
@@ -781,9 +619,9 @@
       return { sjavms_start: toCrmIso(v.start), sjavms_end: toCrmIso(v.end), sjavms_hours: v.hours.toFixed(2), msnfp_schedulestatus: v.status };
     }
 
-    // Production driver. A hidden same-origin iframe loads the real form, so
-    // the portal's own scripts (date pickers, client validators, the WebForms
-    // postback) all run as they would in the modal. Sequence:
+    // The real driver. A hidden same-origin iframe loads the actual form, so the
+    // portals own scripts (date pickers, client validators, the WebForms
+    // postback) all run exactly like they do in the modal. Sequence:
     //   1. iframe <- GET modal form
     //   2. on load: sanity-check the form, set the four fields, fire change
     //   3. click #UpdateButton (its onclick validates then posts back);
@@ -800,6 +638,10 @@
         const timer = setTimeout(() => finish(reject, new Error(`VMS took more than ${Math.round(timeout / 1000)} s to answer. The shift may or may not have been updated; reload the list before trying again.`)), timeout);
         f.addEventListener('load', () => {
           try {
+            // If you're reading this you're either debugging a failed approval or
+            // you're from national wondering how a group lead is posting to your
+            // form without the modal. Built out of spite, mostly. Cam Prosic,
+            // Deputy Chief Ops, SJA Hamilton D0007. Happy to walk you through it.
             let doc = null, href = '';
             try { doc = f.contentDocument; href = f.contentWindow && f.contentWindow.location.href; } catch (e) { doc = null; }
             if (href === 'about:blank') return;   // some browsers fire a load for the empty frame first
@@ -897,7 +739,8 @@
   D.Approvals = Approvals;
 
   // --- styles -----------------------------------------------------------
-  // Everything is scoped under #d0007-root so we don't fight the portal css.
+  // All scoped under #d0007-root so we dont fight the portals bootstrap. The
+  // green is close to the SJA green, the rest is whatever didnt look terrible.
   const CSS = `
 #d0007-root{position:fixed;inset:0;z-index:2147483000;background:#f3f5f2;color:#1d2a1f;font:14px/1.45 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;display:flex;flex-direction:column;overflow:hidden}
 #d0007-root *{box-sizing:border-box}
@@ -963,10 +806,12 @@
 #d0007-root footer{font-size:11.5px;color:#7a877c;padding:6px 16px;border-top:1px solid #dfe5e0;background:#fff}
 #d0007-launch{position:fixed;right:16px;bottom:16px;z-index:2147482000;background:#1f4d2b;color:#fff;border:0;border-radius:999px;padding:10px 16px;font:600 13px -apple-system,"Segoe UI",Roboto,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer}
 `;
-  // Screens append their own css here so they don't have to edit this file.
+  // Screens push their own css onto this so they dont have to edit this file.
   const CSS_PARTS = [CSS];
 
   // --- ui -------------------------------------------------------------
+  // No framework. innerHTML + template strings + esc() on anything that came
+  // from VMS, then bind events after. Its a userscript, not a startup.
   const state = { tab: 'events', evSet: 'upcoming', openEvent: null, hoursWin: '', hoursBy: 'volunteer', q: '', certFilter: 'all', sort: {}, rosterSel: null };
   let root = null, main = null;
 
@@ -986,8 +831,9 @@
   }
   const matches = (q, ...fields) => !q || fields.some(f => norm(f).includes(norm(q)));
 
-  // Each render gets a ticket; a slow tab that finishes after you've already
-  // switched away must not paint over the new one.
+  // Each render gets a ticket. A slow tab that finishes loading after you've
+  // already clicked somewhere else must not paint over the new one (it did,
+  // once, and it was confusing as hell).
   let renderTicket = 0;
   function render() {
     const ticket = ++renderTicket;
@@ -996,11 +842,14 @@
     const tab = TABS.find(t => t.id === state.tab) || TABS[0];
     Promise.resolve().then(() => tab.render()).catch(e => { if (ticket === renderTicket) main.innerHTML = `<div class="wrap"><div class="err"><b>Couldn't load data.</b> ${esc(e.message || e)}</div></div>`; });
   }
-  // Screens call this before writing to main after an await: if it returns
-  // false the user has moved on and the screen should just stop.
+  // Screens call this before touching main after an await - if it comes back
+  // false the person has moved on and the screen should just stop.
   const stillCurrent = tabId => state.tab === tabId;
 
   // ---- Events ----
+  // The home page already works out "N volunteers still needed" per event card.
+  // What it doesnt do is show that across all your events on one screen, which
+  // is the single most useful number in the entire system. So, this.
   async function renderEvents() {
     const [ev, up] = await Promise.all([VMS.groupEvents(), VMS.upcomingEngagements().catch(() => [])]);
     if (!stillCurrent('events')) return;
@@ -1064,274 +913,47 @@
         ${d.shifts.length ? `<div class="bar" style="margin-top:12px"><b>Reported shifts (${d.shifts.length})</b></div><div class="tbl"><table><thead><tr><th>Volunteer</th><th>Start</th><th class="n">Hours</th><th>Status</th></tr></thead><tbody>
           ${d.shifts.map(s => `<tr><td>${esc(s.name)}</td><td>${esc(fmtDT(s.start))}</td><td class="n">${s.hours || ''}</td><td>${statusPill(s.status)}${/pending/i.test(s.status) ? ` <button class="btn ap-go" data-approve="${esc(title)}" title="Open this event's pending shifts on the Hours tab">Approve…</button>` : ''}</td></tr>`).join('')}
         </tbody></table></div>` : ''}`;
-      // Pending rows jump to the Hours tab filtered to this event, so approvals
-      // can be done event by event from here.
+      // Pending rows jump to the Hours tab filtered to this event so you can
+      // approve an event right after looking at who was actually on it.
       box.querySelectorAll('[data-approve]').forEach(b => b.addEventListener('click', () => { state.pendingSearch = b.dataset.approve; state.tab = 'hours'; state.q = ''; render(); }));
     } catch (e) { box.innerHTML = `<div class="err">${esc(e.message || e)}</div>`; }
   }
   const CSS_ID = s => String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
   TABS.push({ id: 'events', label: 'Events', render: renderEvents });
 
-  // ---- Schedule ----
-  // The monthly Event Schedule, on screen. Same twelve columns as the sheet,
-  // one row per event day, VMS filling in what it knows and the rest typed
-  // straight into the cell. "Copy month for spreadsheet" is for anyone who
-  // still wants it in Excel.
-  // Month lives on state (so it survives a Refresh); the rest is ours.
-  const sched = { rows: [], req: 0, flashTimer: null };
-  const SCHED_MULTI = new Set(['notes', 'requirement', 'equipment', 'vehicle']);
-  const SCHED_LABEL = { meetSJ: 'Meet @ St.John', meetEvent: 'Meet @ Event', approxEnd: 'Approx. End', coordinator: 'On-Site Coordinator', requirement: 'Requirement (e.g. 1 Command / 1 Driver / 3 MFR)', notes: 'Notes', equipment: 'Equipment, one per line', vehicle: 'Vehicle, one per line' };
-  const SCHED_PLACEHOLDER = { requirement: 'Requirement', notes: 'Notes' };
-  // The sheet's fills are full-strength; on screen that's unreadable, so mix
-  // them 80% towards white and keep the real hex for the swatch and the export.
-  const tint = hex => { const n = parseInt(hex.slice(1), 16); const mix = v => Math.round(v * 0.2 + 255 * 0.8); return `rgb(${mix(n >> 16 & 255)},${mix(n >> 8 & 255)},${mix(n & 255)})`; };
-  const vmsEventLink = id => `/en-US/group-lead/event-summary/?eventid=${encodeURIComponent(id)}&groupid=${GROUP_ID}`;
-
-  async function renderSchedule() {
-    if (!state.schedY) { const t = Schedule.today(); state.schedY = t.year; state.schedM = t.month; }
-    scheduleFrame();
-    const req = ++sched.req;
-    const rows = await Schedule.monthRows(state.schedY, state.schedM);
-    if (req !== sched.req) return;   // user moved on to another month while this one loaded
-    sched.rows = rows;
-    paintSchedule();
-  }
-  // Header bar plus an empty table slot. Separate from the paint so it can be
-  // put back if another tab's slow render lands on top of ours.
-  function scheduleFrame() {
-    main.innerHTML = `<div class="wrap wide">
-      <div class="bar sched-bar">
-        <div class="seg"><button data-nav="-1" title="Previous month">‹</button><button data-nav="0">This month</button><button data-nav="1" title="Next month">›</button></div>
-        <h2 class="sched-h">${esc(Schedule.monthLabel(state.schedY, state.schedM))}</h2>
-        <span class="sp"></span>
-        <button class="btn" id="d7-copy" disabled title="Copies the month as tab-separated text, ready to paste over the sheet">Copy month for spreadsheet</button>
-        <button class="btn" id="d7-xlsx" disabled>Download .xlsx</button>
-        <button class="btn" id="d7-print" disabled>Print</button>
-        <span class="sched-flash" id="d7-flash" aria-live="polite"></span>
-      </div>
-      <div id="d7-sched"><div class="load">Loading events…</div></div>
-      <p class="muted sched-foot">Event, date, location, meet-at-event, approx. end and the names come from VMS (shifts on the event). Everything else is typed here and kept in this browser - see the Data tab to move it between people. Click a cell to edit; Enter saves, Esc cancels; clearing Meet @ Event or Approx. End goes back to the VMS value. Colours: ${Schedule.COLOURS.map(c => `<span class="sw" style="background:${c.hex}"></span> ${esc(c.label)}`).join(' · ')}</p>
-    </div>`;
-    main.querySelectorAll('[data-nav]').forEach(b => b.addEventListener('click', () => {
-      const n = +b.dataset.nav;
-      if (n === 0) { const t = Schedule.today(); state.schedY = t.year; state.schedM = t.month; }
-      else { state.schedM += n; if (state.schedM < 1) { state.schedM = 12; state.schedY--; } if (state.schedM > 12) { state.schedM = 1; state.schedY++; } }
-      render();
-    }));
-    main.querySelector('#d7-copy').addEventListener('click', copySchedule);
-    main.querySelector('#d7-xlsx').addEventListener('click', downloadSchedule);
-    main.querySelector('#d7-print').addEventListener('click', printSchedule);
-  }
-
-  function paintSchedule() {
-    if (state.tab !== 'schedule') return;
-    if (!main.querySelector('#d7-sched')) scheduleFrame();   // something else painted main while we were fetching
-    const box = main.querySelector('#d7-sched');
-    const rows = sched.rows;
-    main.querySelectorAll('#d7-copy,#d7-xlsx,#d7-print').forEach(b => { b.disabled = !rows.length; });
-    if (!rows.length) { box.innerHTML = `<div class="card muted">No events with a day in ${esc(Schedule.monthLabel(state.schedY, state.schedM))}.</div>`; return; }
-    let body = '', prev = null;
-    rows.forEach(r => {
-      if (prev && prev !== r.date) body += `<tr class="sched-gap"><td colspan="${Schedule.COLUMNS.length}"></td></tr>`;
-      body += `<tr class="sched-row" data-key="${esc(r.key)}" style="${rowStyle(r)}">${rowHTML(r)}</tr>`; prev = r.date;
-    });
-    box.innerHTML = `<div class="tbl sched-tbl"><table class="sched-table"><thead><tr>${Schedule.COLUMNS.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
-    box.querySelectorAll('tr[data-key]').forEach(bindRow);
-  }
-  const rowStyle = r => r.colour ? `--tint:${tint(r.colour)}` : '';
-  function rowHTML(r) {
-    const ed = field => {
-      const v = r[field] || '', edited = r.edited && r.edited[field];
-      const tip = `${SCHED_LABEL[field]} - click to edit${edited ? `. VMS says ${r.derived[field] || 'nothing'}; clear the cell to use that` : ''}`;
-      return `<div class="ed" data-field="${field}" title="${esc(tip)}" tabindex="0">${v ? esc(v).replace(/\n/g, '<br>') : `<span class="muted">${esc(SCHED_PLACEHOLDER[field] || '—')}</span>`}${edited ? '<i class="edited" title="Edited here; VMS has a different value"></i>' : ''}</div>`;
-    };
-    const person = p => `<div class="nm">${esc(p.name)}${p.tags.length ? ` <b class="tag">${esc(p.tags.join('/'))}</b>` : ''}${p.unit ? ` <span class="muted">(${esc(p.unit)})</span>` : ''}${p.partial ? `<b class="star" title="${esc(p.partial.start + ' to ' + p.partial.end)}">${esc(p.partial.mark)}</b>` : ''}${/no.?show/i.test(p.status) ? ' <span class="pill red">no show</span>' : ''}</div>`;
-    const names = role => {
-      const ps = r.people.filter(p => p.role === role).map(person);
-      const extra = [...r.waitlisted.filter(p => p.role === role).map(p => `<div class="nm muted">${esc(p.name)} <span class="why">(waitlist)</span></div>`), ...r.signedUpNoShift.filter(p => p.role === role).map(p => `<div class="nm muted">${esc(p.name)} <span class="why">(signed up, no shift)</span></div>`)];
-      return ps.join('') + (ps.length || extra.length ? '' : '<span class="muted">—</span>') + extra.join('');
-    };
-    const swatches = `<span class="sw-row">${[{ hex: '', label: 'No colour' }, ...Schedule.COLOURS].map(c => `<button type="button" class="sw ${r.colour === c.hex ? 'on' : ''}" data-colour="${c.hex}" title="${esc(c.label)}" style="background:${c.hex || '#fff'}"></button>`).join('')}</span>`;
-    return `<td class="c-event"><div class="ev-t">${esc(r.title)}</div><div class="ev-m"><a href="${esc(vmsEventLink(r.eventId))}" target="_blank" rel="noopener">Open in VMS ↗</a>${r.error ? ` <span class="pill red" title="${esc(r.error)}">detail failed</span>` : ''}${r.shiftCount ? '' : ' <span class="muted">no shifts yet</span>'}</div>${swatches}</td>
-      <td class="c-date"><b>${esc(r.dateLabel)}</b>${r.startMismatch ? `<div class="muted why">VMS start ${esc(fmtD(r.eventStart))}</div>` : ''}</td>
-      <td>${ed('meetSJ')}</td><td>${ed('meetEvent')}</td><td>${ed('approxEnd')}</td>
-      <td>${esc(r.location) || '<span class="muted">—</span>'}</td>
-      <td>${ed('coordinator')}</td>
-      <td class="c-notes">${ed('requirement')}${r.derived.notes.length ? `<div class="auto" title="From the shifts in VMS">${r.derived.notes.map(esc).join('<br>')}</div>` : ''}${ed('notes')}</td>
-      <td class="c-names">${names('MFR')}</td><td class="c-names">${names('Apprentice')}</td>
-      <td>${ed('equipment')}</td><td>${ed('vehicle')}</td>`;
-  }
-  function bindRow(tr) {
-    const row = sched.rows.find(r => r.key === tr.dataset.key); if (!row) return;
-    tr.querySelectorAll('.ed[data-field]').forEach(d => {
-      d.addEventListener('click', () => startEdit(tr, row, d.dataset.field));
-      d.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target === d) { e.preventDefault(); startEdit(tr, row, d.dataset.field); } });
-    });
-    tr.querySelectorAll('.sw[data-colour]').forEach(b => b.addEventListener('click', () => saveField(tr, row, 'colour', b.dataset.colour)));
-  }
-  function saveField(tr, row, field, value) {
-    Store.patch('schedule', row.key, { [field]: value });
-    Object.assign(row, Schedule.withOverrides(row));
-    tr.style.cssText = rowStyle(row); tr.innerHTML = rowHTML(row); bindRow(tr);
-  }
-  function startEdit(tr, row, field) {
-    const box = tr.querySelector(`.ed[data-field="${field}"]`); if (!box || box.querySelector('input,textarea')) return;
-    const multi = SCHED_MULTI.has(field), cur = row[field] || '';
-    box.innerHTML = multi ? `<textarea rows="${Math.min(6, Math.max(2, cur.split('\n').length + 1))}" placeholder="${esc(SCHED_LABEL[field])}">${esc(cur)}</textarea>` : `<input type="text" value="${esc(cur)}" placeholder="${esc(field === 'meetSJ' || field === 'meetEvent' || field === 'approxEnd' ? 'HH:MM' : SCHED_LABEL[field])}">`;
-    const inp = box.firstElementChild; inp.focus(); if (!multi) inp.select();
-    let done = false;
-    const finish = save => {
-      if (done) return; done = true;
-      if (save && inp.value !== cur) saveField(tr, row, field, inp.value);
-      else { tr.innerHTML = rowHTML(row); bindRow(tr); }
-    };
-    inp.addEventListener('blur', () => finish(true));
-    inp.addEventListener('keydown', e => {
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
-      else if (e.key === 'Enter' && (!multi || e.ctrlKey || e.metaKey)) { e.preventDefault(); finish(true); }
-    });
-  }
-  function flash(msg) {
-    const f = main.querySelector('#d7-flash'); if (!f) return;
-    f.textContent = msg; clearTimeout(sched.flashTimer); sched.flashTimer = setTimeout(() => { f.textContent = ''; }, 3000);
-  }
-  async function copySchedule() {
-    const tsv = Schedule.toTSV(sched.rows);
-    let ok = false;
-    try { await navigator.clipboard.writeText(tsv); ok = true; } catch (e) { /* no clipboard permission - try the old way */ }
-    if (!ok) {
-      const ta = el('textarea', { style: 'position:fixed;left:-9999px;top:0', 'aria-hidden': 'true' }); ta.value = tsv; root.appendChild(ta); ta.select();
-      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
-      ta.remove();
-    }
-    flash(ok ? `Copied ${sched.rows.length} rows. Paste into the sheet with the Event column selected.` : 'Copy failed - the browser blocked clipboard access.');
-  }
-  function downloadSchedule() {
-    const name = `Event Schedule ${Schedule.monthLabel(state.schedY, state.schedM)}.xlsx`;
-    const bytes = Schedule.toXLSX(sched.rows, { sheetName: Schedule.monthName(state.schedM) });
-    const a = el('a', { href: URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })), download: name });
-    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
-    flash(`Saved ${name}`);
-  }
-  function printSchedule() {
-    // Landscape only while we're the ones printing; the portal's own pages can
-    // keep whatever orientation they had.
-    document.body.classList.add('d7-print');
-    const page = el('style', { id: 'd7-print-page' }, '@page{size:landscape;margin:10mm}'); document.head.appendChild(page);
-    const off = () => { document.body.classList.remove('d7-print'); page.remove(); window.removeEventListener('afterprint', off); };
-    window.addEventListener('afterprint', off);
-    window.print();
-    setTimeout(off, 1000);   // Safari doesn't always fire afterprint
-  }
-
-  CSS_PARTS.push(`
-#d0007-root .wrap.wide{max-width:none}
-#d0007-root .sched-h{font-size:18px;margin:0 6px;font-weight:600;color:#1f4d2b;white-space:nowrap}
-#d0007-root .sched-flash{font-size:12.5px;color:#1f5a2c;flex-basis:100%}
-#d0007-root .sched-flash:empty{display:none}
-#d0007-root .sched-tbl{max-height:75vh}
-#d0007-root .sched-table{min-width:1400px;table-layout:fixed}
-#d0007-root .sched-table th{cursor:default;z-index:2;white-space:normal;vertical-align:bottom}
-#d0007-root .sched-table th:first-child,#d0007-root .sched-table td:first-child{position:sticky;left:0}
-#d0007-root .sched-table th:first-child{z-index:3}
-#d0007-root .sched-table td:first-child{z-index:1;border-right:1px solid #dfe5e0}
-#d0007-root .sched-table td{background:var(--tint,#fff);vertical-align:top;font-size:12.5px}
-#d0007-root .sched-table th:nth-child(1){width:200px}
-#d0007-root .sched-table th:nth-child(2){width:88px}
-#d0007-root .sched-table th:nth-child(3),#d0007-root .sched-table th:nth-child(4),#d0007-root .sched-table th:nth-child(5){width:72px}
-#d0007-root .sched-table th:nth-child(6){width:140px}
-#d0007-root .sched-table th:nth-child(7){width:120px}
-#d0007-root .sched-table th:nth-child(8){width:200px}
-#d0007-root .sched-table th:nth-child(9){width:170px}
-#d0007-root .sched-table th:nth-child(10){width:150px}
-#d0007-root .sched-table th:nth-child(11),#d0007-root .sched-table th:nth-child(12){width:80px}
-#d0007-root .sched-gap td{height:7px;padding:0;background:#f3f5f2;border-bottom:0}
-#d0007-root .ev-t{font-weight:600}
-#d0007-root .ev-m{font-size:11.5px;margin-top:2px}
-#d0007-root .why{font-size:11px}
-#d0007-root .sw-row{display:inline-flex;gap:3px;margin-top:6px}
-#d0007-root .sw{display:inline-block;width:14px;height:14px;border:1px solid #b9c2ba;border-radius:3px;padding:0;cursor:pointer;vertical-align:middle}
-#d0007-root .sw.on{outline:2px solid #1f4d2b;outline-offset:1px}
-#d0007-root .ed{min-height:20px;border-radius:4px;padding:1px 3px;margin:-1px -3px;cursor:text;white-space:pre-wrap;word-break:break-word;position:relative}
-#d0007-root .ed:hover,#d0007-root .ed:focus{background:rgba(31,77,43,.07);outline:none}
-#d0007-root .ed input,#d0007-root .ed textarea{width:100%;font:inherit;border:1px solid #1f4d2b;border-radius:4px;padding:2px 4px;background:#fff;resize:vertical}
-#d0007-root .ed .edited{display:inline-block;width:6px;height:6px;border-radius:50%;background:#b8860b;margin-left:4px;vertical-align:middle}
-#d0007-root .c-notes .ed+.ed,#d0007-root .c-notes .auto{margin-top:4px}
-#d0007-root .c-notes .auto{color:#3a4a3d;font-style:italic;white-space:pre-wrap}
-#d0007-root .nm{margin-bottom:1px}
-#d0007-root .nm .tag{color:#1f4d2b}
-#d0007-root .nm .star{color:#b23a2a;margin-left:1px}
-#d0007-root .sched-foot{font-size:12px;margin-top:10px}
-#d0007-root .sched-foot .sw{width:11px;height:11px;cursor:default}
-${['body.d7-print', 'body:has(> #d0007-root:not([style*="none"]))'].map(scope => `
-@media print{
-  ${scope} > :not(#d0007-root){display:none!important}
-  ${scope} #d0007-root{position:static;height:auto;overflow:visible;display:block;background:#fff;font-size:11px}
-  ${scope} #d0007-root header,${scope} #d0007-root nav,${scope} #d0007-root footer,${scope} #d0007-root .seg,${scope} #d0007-root .btn,${scope} #d0007-root .sched-flash,${scope} #d0007-root .sw-row,${scope} #d0007-root .sched-foot,${scope} #d0007-root .ev-m,${scope} #d0007-root .edited{display:none!important}
-  ${scope} #d0007-root main{overflow:visible;padding:0}
-  ${scope} #d0007-root .sched-h:before{content:"Event Schedule — "}
-  ${scope} #d0007-root .sched-tbl{max-height:none;overflow:visible;border:0;border-radius:0}
-  ${scope} #d0007-root .sched-table{min-width:0;width:100%;table-layout:auto}
-  ${scope} #d0007-root .sched-table th,${scope} #d0007-root .sched-table td{position:static;font-size:9.5px;padding:3px 4px;border:1px solid #cfd8d0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  ${scope} #d0007-root .sched-table thead{display:table-header-group}
-  ${scope} #d0007-root .sched-table tr{break-inside:avoid;page-break-inside:avoid}
-  ${scope} #d0007-root .sched-gap td{height:4px;border:0}
-  ${scope} #d0007-root .ed{margin:0;padding:0}
-  ${scope} #d0007-root .ed .muted{visibility:hidden}
-}`).join('')}
-`);
-  TABS.push({ id: 'schedule', label: 'Schedule', render: renderSchedule });
-
   // ---- Roster ----
+  // The volunteers page in the portal is a 10-row paginated table with a csv
+  // button. This is the csv, on screen, searchable, with hours and certs a
+  // click away. Revolutionary stuff.
+  //
+  // "MFR" here means VMS has a current Medical First Responder cert on file for
+  // the person (any of the MFR qualification names). Same test the Schedule tab
+  // falls back on when it cant tell which shift someone booked.
+  function mfrCertOf(name, certs) {
+    const mine = certs.filter(c => norm(c.name) === norm(name) && /medical first responder/i.test(c.qualification) && c.expiry && daysUntil(c.expiry) >= 0);
+    return mine.sort((a, b) => (toDate(b.expiry)?.getTime() || 0) - (toDate(a.expiry)?.getTime() || 0))[0] || null;
+  }
   async function renderRoster() {
-    // Certs decide who's MFR vs Apprentice on the Schedule tab; the roster is
-    // where you'd expect to see that, so it's a column here too.
     const [roster, certs] = await Promise.all([VMS.roster(), VMS.certifications().catch(() => [])]);
-    const members = Store.all('members');
-    const withRole = roster.map(r => { const i = Schedule.memberInfo(r.name, { certs, members }); return { ...r, role: i.role, autoRole: i.autoRole, roleSet: i.roleSet, tags: i.tags, unit: i.unit }; });
+    if (!stillCurrent('roster')) return;
+    roster.forEach(r => { const c = mfrCertOf(r.name, certs); r.mfr = c ? 'MFR' : 'Apprentice'; r.mfrTo = c ? c.expiry : ''; });
     const q = state.q;
-    const rows = sortRows(withRole.filter(r => matches(q, r.name, r.email, r.phone, r.contactId, r.status, r.role)), 'roster', 'name');
+    const rows = sortRows(roster.filter(r => matches(q, r.name, r.email, r.phone, r.contactId, r.status, r.mfr)), 'roster', 'name');
     const active = roster.filter(r => /active/i.test(r.status)).length;
-    const sel = state.rosterSel && withRole.find(r => r.contactId === state.rosterSel);
-    const roleCell = r => `${esc(r.role)}${r.tags.length ? ` <b class="tag">${esc(r.tags.join('/'))}</b>` : ''}${r.unit ? ` <span class="muted">(${esc(r.unit)})</span>` : ''}${r.roleSet ? ' <span class="muted" title="Set on this roster, not from certifications">·</span>' : ''}`;
+    const sel = state.rosterSel && roster.find(r => r.contactId === state.rosterSel);
     main.innerHTML = `<div class="wrap">
-      <div class="stats"><div class="stat"><b>${roster.length}</b><span>members in group</span></div><div class="stat"><b>${active}</b><span>active</span></div><div class="stat"><b>${roster.length - active}</b><span>other status</span></div><div class="stat"><b>${withRole.filter(r => r.role === 'MFR').length}</b><span>MFR</span></div></div>
+      <div class="stats"><div class="stat"><b>${roster.length}</b><span>members in group</span></div><div class="stat"><b>${active}</b><span>active</span></div><div class="stat"><b>${roster.filter(r => r.mfr === 'MFR').length}</b><span>with a current MFR cert</span></div><div class="stat"><b>${roster.filter(r => r.mfr !== 'MFR').length}</b><span>apprentice / no MFR cert on file</span></div></div>
       <div class="bar"><input type="search" placeholder="Search name, email, phone, ID…" value="${esc(q)}"><button class="btn" id="d7-csv">Download CSV</button></div>
-      <div class="two"><div class="tbl"><table><thead><tr>${th('Name', 'name', 'roster', 'name')}${th('Role', 'role', 'roster', 'name')}${th('Email', 'email', 'roster', 'name')}${th('Phone', 'phone', 'roster', 'name')}${th('Status', 'status', 'roster', 'name')}${th('ID', 'contactId', 'roster', 'name')}</tr></thead><tbody>
-        ${rows.map(r => `<tr class="row" data-sel="${esc(r.contactId)}"><td>${esc(r.name)}</td><td>${roleCell(r)}</td><td><a href="mailto:${esc(r.email)}">${esc(r.email)}</a></td><td><a href="tel:${esc(r.phone)}">${esc(r.phone)}</a></td><td>${statusPill(r.status)}</td><td class="muted">${esc(r.contactId)}</td></tr>`).join('')}
+      <div class="two"><div class="tbl"><table><thead><tr>${th('Name', 'name', 'roster', 'name')}${th('MFR cert', 'mfr', 'roster', 'name')}${th('Email', 'email', 'roster', 'name')}${th('Phone', 'phone', 'roster', 'name')}${th('Status', 'status', 'roster', 'name')}${th('ID', 'contactId', 'roster', 'name')}</tr></thead><tbody>
+        ${rows.map(r => `<tr class="row" data-sel="${esc(r.contactId)}"><td>${esc(r.name)}</td><td>${r.mfr === 'MFR' ? pill('MFR', 'green') + ` <span class="muted">to ${esc(fmtD(r.mfrTo))}</span>` : pill('Apprentice', 'grey')}</td><td><a href="mailto:${esc(r.email)}">${esc(r.email)}</a></td><td><a href="tel:${esc(r.phone)}">${esc(r.phone)}</a></td><td>${statusPill(r.status)}</td><td class="muted">${esc(r.contactId)}</td></tr>`).join('')}
       </tbody></table></div>
-      <div class="side" id="d7-side">${sel ? '<div class="load">Loading…</div>' : '<span class="muted">Select a member to see their hours, certifications and schedule tags.</span>'}</div></div>
+      <div class="side" id="d7-side">${sel ? '<div class="load">Loading…</div>' : '<span class="muted">Select a member to see their hours and certifications.</span>'}</div></div>
     </div>`;
     const inp = main.querySelector('input[type=search]'); inp.addEventListener('input', () => { state.q = inp.value; renderRoster(); });
     bindSort(main, renderRoster);
     main.querySelectorAll('tr[data-sel]').forEach(tr => tr.addEventListener('click', () => { state.rosterSel = tr.dataset.sel; renderRoster(); }));
-    main.querySelector('#d7-csv').addEventListener('click', () => downloadCSV('d0007-roster.csv', ['Name', 'Role', 'Tags', 'Unit', 'Email', 'Phone', 'Status', 'Contact ID'], rows.map(r => [r.name, r.role, r.tags.join('/'), r.unit, r.email, r.phone, r.status, r.contactId])));
+    main.querySelector('#d7-csv').addEventListener('click', () => downloadCSV('d0007-roster.csv', ['Name', 'MFR cert', 'MFR cert expiry', 'Email', 'Phone', 'Status', 'Contact ID'], rows.map(r => [r.name, r.mfr, r.mfrTo, r.email, r.phone, r.status, r.contactId])));
     if (sel) memberPanel(sel);
-  }
-  // The bits of a member the schedule needs and VMS has no field for: MFR or
-  // Apprentice (when the cert feed is wrong or missing), Command / Driver /
-  // Senior, and a home unit for people borrowed from Burlington et al.
-  function tagForm(m) {
-    const cur = Store.get('members', norm(m.name)) || {};
-    const role = cur.role === 'MFR' || cur.role === 'Apprentice' ? cur.role : '';
-    const tags = Array.isArray(cur.tags) ? cur.tags : [];
-    return `<h4>Schedule tags</h4>
-      <form id="d7-tags" class="tagform">
-        <label>Role <select name="role"><option value="" ${role ? '' : 'selected'}>Auto (${esc(m.autoRole || '')})</option><option value="MFR" ${role === 'MFR' ? 'selected' : ''}>MFR</option><option value="Apprentice" ${role === 'Apprentice' ? 'selected' : ''}>Apprentice</option></select></label>
-        <span class="tagset">${Schedule.TAGS.map(t => `<label><input type="checkbox" name="tag" value="${t}" ${tags.includes(t) ? 'checked' : ''}> ${t}</label>`).join('')}</span>
-        <label>Unit <input type="text" name="unit" value="${esc(cur.unit || '')}" placeholder="e.g. Burl" size="8"></label>
-      </form>
-      <div class="muted" style="font-size:12px">Auto role is ${esc(m.autoRole || '')}${m.autoRole === 'MFR' ? ' (current Medical First Responder cert on file)' : ' (no current Medical First Responder cert in the feed)'}. C = Command, D = Driver, Sr = Senior. Saved in this browser; shows on the Schedule tab as "${esc(m.name)} C/D (Burl)".</div>`;
-  }
-  function bindTagForm(m) {
-    const f = main.querySelector('#d7-tags'); if (!f) return;
-    f.addEventListener('submit', e => e.preventDefault());
-    f.addEventListener('change', () => {
-      // (form.role is the ARIA attribute, not the select - hence querySelector)
-      const role = f.querySelector('select[name=role]').value, tags = [...f.querySelectorAll('input[name=tag]:checked')].map(i => i.value), unit = f.querySelector('input[name=unit]').value.trim();
-      Store.patch('members', norm(m.name), { role, tags, unit });
-      renderRoster();
-    });
   }
   async function memberPanel(m) {
     const side = main.querySelector('#d7-side'); if (!side) return;
@@ -1341,37 +963,30 @@ ${['body.d7-print', 'body:has(> #d0007-root:not([style*="none"]))'].map(scope =>
       const tot = r2(mine.reduce((a, h) => a + h.completed, 0)), pend = r2(mine.reduce((a, h) => a + h.pending, 0));
       const myCerts = certs.filter(c => norm(c.name) === norm(m.name)).sort((a, b) => (toDate(a.expiry)?.getTime() || 0) - (toDate(b.expiry)?.getTime() || 0));
       side.innerHTML = `<h3>${esc(m.name)}</h3><div class="muted">${esc(m.email)} · ${esc(m.phone)} · ${statusPill(m.status)}</div>
-        ${tagForm(m)}
         <h4>Last 12 months</h4><div class="stats" style="margin-bottom:6px"><div class="stat"><b>${tot}</b><span>completed hrs</span></div><div class="stat"><b>${pend}</b><span>pending hrs</span></div><div class="stat"><b>${mine.length}</b><span>events</span></div></div>
         ${mine.length ? `<ul class="plain">${mine.sort((a, b) => b.completed - a.completed).slice(0, 12).map(h => `<li><span>${esc(h.event)}</span><span class="n">${h.completed}${h.pending ? ` <span class="muted">(+${h.pending} pending)</span>` : ''}</span></li>`).join('')}</ul>` : '<div class="muted">No participations in the last 12 months.</div>'}
         <h4>SJA certifications</h4>${myCerts.length ? `<ul class="plain">${myCerts.map(c => `<li><span>${esc(c.qualification)}</span><span>${certPill(c.expiry)}</span></li>`).join('')}</ul>` : '<div class="muted">None on file.</div>'}`;
-      bindTagForm(m);
     } catch (e) { side.innerHTML = `<div class="err">${esc(e.message || e)}</div>`; }
   }
-  CSS_PARTS.push(`
-#d0007-root .tagform{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;margin-bottom:6px}
-#d0007-root .tagform select,#d0007-root .tagform input[type=text]{font:inherit;font-size:13px;border:1px solid #cfd8d0;border-radius:6px;padding:4px 6px;background:#fff}
-#d0007-root .tagform .tagset{display:inline-flex;gap:8px}
-#d0007-root .tagform .tagset label{white-space:nowrap}
-`);
   TABS.push({ id: 'roster', label: 'Roster', render: renderRoster });
+  D.mfrCertOf = mfrCertOf;
 
   // ---- Hours ----
-  // Two things on this tab. The top is the pending-approval queue, which is
-  // the one place this script writes to VMS (the mechanics are in
-  // 22-approve.js). Below it, collapsed, is the hours report that used to be
-  // the whole tab.
+  // Two things here. Top is the pending approval queue, the one place this
+  // script writes to VMS (mechanics in 22-approve.js). Under it, collapsed, is
+  // the hours report that used to be this whole tab.
   //
-  // Nothing is written until the person presses Submit, reads the list of
-  // exactly what will change, and presses Confirm. Each row's start/end/hours
-  // come from the shift's own approval form (read when the row is first
-  // touched), not from the list page, so what's shown is what gets sent.
+  // Nothing gets written until you press Submit, read the list of exactly
+  // whats going to change, and press Confirm. Each rows start/end/hours come
+  // from the shifts own approval form (read when you first touch the row), not
+  // from the list page, so what you see is what gets sent. I've been burned by
+  // the list page rounding before.
   const AP = { list: null, total: 0, truncated: false, progress: '', error: null, rows: new Map(), closed: new Set(), confirm: null, running: null, lastRun: null, reportOpen: false, loadToken: 0, evHours: {}, reportRows: [] };
   const AP_STATUSES = [[Approvals.STATUS.APPROVED, 'Approve'], [Approvals.STATUS.NO_SHOW, 'No show'], [Approvals.STATUS.CANCELLED, 'Cancel'], [Approvals.STATUS.PENDING, 'Leave pending']];
   const AP_SPIN = ' <span class="ap-spin" title="Reading the shift from VMS…"></span>';
 
   const apRow = item => ({ id: item.shiftId, item, form: null, formLoading: false, formError: null, formPromise: null, sel: false, status: Approvals.STATUS.APPROVED, edits: {}, timesOpen: false, result: null });
-  // Until the form has been read, the list page's start and hours stand in.
+  // Until the form has been read the list pages start and hours stand in.
   const apBase = r => r.form || { start: r.item.start, end: r.item.start ? new Date(r.item.start.getTime() + r.item.hours * 3600000) : null, hours: r.item.hours, status: Approvals.STATUS.PENDING };
   function apView(r) { try { return { v: Approvals.plan(apBase(r), { ...r.edits, status: r.status }), err: null }; } catch (e) { return { v: null, err: e.message || String(e) }; } }
   const apShown = r => { const { v, err } = apView(r); const b = apBase(r); return { start: v ? v.start : (r.edits.start || b.start), end: v ? v.end : (r.edits.end || b.end), hours: v ? v.hours : (r.edits.hours ?? b.hours), err }; };
@@ -1385,15 +1000,15 @@ ${['body.d7-print', 'body:has(> #d0007-root:not([style*="none"]))'].map(scope =>
   const apSelected = () => [...AP.rows.values()].filter(r => r.sel);
   const apBusy = () => !!(AP.confirm || AP.running);
 
-  // Entry from the tab bar or Refresh: start over.
+  // Entry from the tab bar or Refresh - start over (unless a batch is running).
   async function renderHours() {
     if (AP.running) { await paintHours(); return; }   // a batch is mid-flight; just show it
     Object.assign(AP, { list: null, error: null, confirm: null, running: null, rows: new Map(), progress: '' });
     await apLoad();
   }
-  // keepRows keeps selections, edits and results for shifts still pending
-  // (used after a run and by Reload); quiet leaves the current list on screen
-  // while the new one comes in.
+  // keepRows keeps your selections, edits and results for shifts still pending
+  // (used after a run and by Reload). quiet leaves the current list on screen
+  // while the new one comes in instead of flashing a spinner at you.
   async function apLoad({ keepRows = false, quiet = false } = {}) {
     const token = ++AP.loadToken;
     const prev = AP.rows;
@@ -1416,6 +1031,8 @@ ${['body.d7-print', 'body:has(> #d0007-root:not([style*="none"]))'].map(scope =>
   }
 
   // --- the shift form, read lazily, three at a time ---
+  // Each one is a ~60KB page for four numbers. Three at a time keeps the
+  // portal from getting grumpy.
   const apQueue = []; let apInFlight = 0;
   function apPump() { while (apInFlight < 3 && apQueue.length) { apInFlight++; apQueue.shift()().finally(() => { apInFlight--; apPump(); }); } }
   function apEnsureForm(r) {
@@ -1534,7 +1151,8 @@ ${['body.d7-print', 'body:has(> #d0007-root:not([style*="none"]))'].map(scope =>
       <ul class="plain">${l.done.map(d => `<li><span class="ap-ok">✓</span><span>${apChangeLine(d.name, d.event, d.values, null)}</span></li>`).join('')}${l.failed.map(f => `<li><span class="ap-bad">✗</span><span>${esc(f.name)} — ${esc(f.event)}</span><span class="pill red">${esc(f.error)}</span></li>`).join('')}</ul></div>`;
   }
 
-  // In-place updates so typing in one row doesn't repaint the screen.
+  // In-place updates so typing in one row doesnt repaint the whole screen and
+  // throw your cursor away.
   function apRowDom(r, { keepHours = false } = {}) {
     if (AP.rows.get(r.id) !== r) return;   // an older copy of this row (a reload happened); its DOM isn't ours
     const tr = main && main.querySelector(`tr.ap-row[data-id="${r.id}"]`); if (!tr) return;
@@ -1602,13 +1220,14 @@ ${['body.d7-print', 'body:has(> #d0007-root:not([style*="none"]))'].map(scope =>
     });
   }
 
-  // --- submit → confirm → run ---
+  // --- submit -> confirm -> run ---
+  // Yes, two steps. Its 143 peoples hours.
   async function apBeginConfirm() {
     const sel = apSelected(); if (!sel.length || apBusy()) return;
     AP.confirm = { loading: true, items: [] };
     await paintHours();
-    // Always read the forms again here: the panel must describe VMS as it is
-    // now, not as it was when the row was first clicked.
+    // Always re-read the forms here. The panel has to describe VMS as it is
+    // right now, not as it was when you first clicked the row ten minutes ago.
     sel.forEach(r => { r.form = null; r.formError = null; });
     await Promise.all(sel.map(apEnsureForm));
     if (!AP.confirm || !AP.confirm.loading) return;   // cancelled meanwhile
@@ -1641,7 +1260,7 @@ ${['body.d7-print', 'body:has(> #d0007-root:not([style*="none"]))'].map(scope =>
     });
     AP.running = null;
     AP.lastRun = { at: new Date(), done: res.done.map(d => ({ name: d.row.item.name, event: d.row.item.event, values: d.values })), failed: res.failed.map(f => ({ name: f.row.item.name, event: f.row.item.event, error: f.error })) };
-    // Done ones leave the queue now; the reload below is the real check.
+    // Done ones leave the queue now, the reload below is the real check.
     for (const d of res.done) AP.rows.delete(d.shiftId);
     AP.list = AP.list.filter(it => AP.rows.has(it.shiftId));
     for (const f of res.failed) { const r = AP.rows.get(f.shiftId); if (r) { r.sel = true; r.form = null; } }   // re-read the form before any retry
@@ -1650,6 +1269,8 @@ ${['body.d7-print', 'body:has(> #d0007-root:not([style*="none"]))'].map(scope =>
   }
 
   // --- the hours report (unchanged, just folded under a toggle) ---
+  // Reports > Volunteer Hours in the portal is 10 rows a page with no totals.
+  // This adds the totals. Thats it. Thats the feature.
   async function hoursReportHTML() {
     const hrs = await VMS.hours(state.hoursWin);
     const q = state.q;
@@ -1740,6 +1361,11 @@ ${['body.d7-print', 'body:has(> #d0007-root:not([style*="none"]))'].map(scope =>
   TABS.push({ id: 'hours', label: 'Hours', render: renderHours });
 
   // ---- Certifications ----
+  // For a first response unit this is the one that matters - someone with a
+  // lapsed MFR cert cant deploy, full stop. VMS has no "show me everyones
+  // current certs" view anywhere. It has five windowed reports with labels that
+  // dont match what they do (see 20-vms.js). This pulls all five and flags
+  // whats expired, whats about to, and whats fine.
   function certState(expiry) { if (!expiry) return 'none'; const d = daysUntil(expiry); if (d === null) return 'none'; return d < 0 ? 'expired' : d <= CERT_WARN_DAYS ? 'expiring' : 'current'; }
   function certPill(expiry) { const s = certState(expiry); const d = daysUntil(expiry); return s === 'expired' ? pill(`Expired ${fmtD(expiry)}`, 'red') : s === 'expiring' ? pill(`Expires in ${d} d`, 'amber') : s === 'current' ? pill(`Valid to ${fmtD(expiry)}`, 'green') : pill('No expiry', 'grey'); }
   async function renderCerts() {
@@ -1766,54 +1392,6 @@ ${['body.d7-print', 'body:has(> #d0007-root:not([style*="none"]))'].map(scope =>
   }
   TABS.push({ id: 'certs', label: 'Certifications', render: renderCerts });
 
-  // ---- Data ----
-  // The unit-side data lives in this browser's localStorage. This is where it
-  // gets moved to another browser, or wiped.
-  const dataState = { mode: 'merge', confirm: false, msg: '' };
-  async function renderData() {
-    const counts = { schedule: Object.keys(Store.all('schedule')).length, members: Object.keys(Store.all('members')).length, settings: Object.keys(Store.all('settings')).length };
-    main.innerHTML = `<div class="wrap">
-      <div class="card"><h3>Local data</h3>
-        <p class="muted">${counts.schedule} schedule row${counts.schedule === 1 ? '' : 's'} with edits · ${counts.members} member${counts.members === 1 ? '' : 's'} with tags · ${counts.settings} setting${counts.settings === 1 ? '' : 's'}</p>
-        <div class="bar">
-          <button class="btn" id="d7-export">Export JSON</button>
-          <label class="btn">Import JSON… <input type="file" id="d7-import" accept=".json,application/json" style="display:none"></label>
-          <span class="seg"><button data-mode="merge" class="${dataState.mode === 'merge' ? 'on' : ''}" title="Keep what's here, add or overwrite with the file's entries">Merge</button><button data-mode="replace" class="${dataState.mode === 'replace' ? 'on' : ''}" title="Throw away what's here and use the file">Replace</button></span>
-        </div>
-        ${dataState.msg ? `<div class="muted">${esc(dataState.msg)}</div>` : ''}
-      </div>
-      <div class="card"><h3>Reset</h3>
-        <p class="muted">Clears every schedule edit, member tag and setting from this browser. Nothing in VMS is touched. Export first if there's any chance you'll want it back.</p>
-        ${dataState.confirm
-          ? `<div class="bar"><span>Really clear it all?</span><button class="btn" id="d7-reset-yes" style="border-color:#c2452f;color:#9a2b1d">Yes, reset local data</button><button class="btn" id="d7-reset-no">Cancel</button></div>`
-          : `<button class="btn" id="d7-reset">Reset local data</button>`}
-      </div>
-      <div class="card"><h3>What lives where</h3>
-        <ul style="margin:0;padding-left:18px">
-          <li><b>From VMS, read live:</b> events, locations, start dates, sign-ups, shifts (so meet-at-event, approx. end and the names on the schedule), roster, hours, certifications. Refresh re-fetches it.</li>
-          <li><b>In this browser only:</b> schedule cells VMS has no field for (Meet @ St.John, coordinator, requirement, notes, equipment, vehicle, row colour, any time you've overridden), and member tags (MFR/Apprentice override, C / D / Sr, home unit). Stored under <code>${esc(Store.KEY)}</code> in localStorage. It doesn't sync anywhere; export and import to pass it to someone else.</li>
-        </ul>
-      </div>
-    </div>`;
-    main.querySelector('#d7-export').addEventListener('click', () => {
-      const a = el('a', { href: URL.createObjectURL(new Blob([Store.exportJSON()], { type: 'application/json' })), download: `d0007-local-data-${new Date().toISOString().slice(0, 10)}.json` });
-      document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
-    });
-    main.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => { dataState.mode = b.dataset.mode; renderData(); }));
-    main.querySelector('#d7-import').addEventListener('change', e => {
-      const f = e.target.files && e.target.files[0]; if (!f) return;
-      const rd = new FileReader();
-      rd.onload = () => { try { Store.importJSON(String(rd.result), { merge: dataState.mode === 'merge' }); dataState.msg = `Imported ${f.name} (${dataState.mode}).`; } catch (err) { dataState.msg = `Couldn't import ${f.name}: ${err.message || err}`; } renderData(); };
-      rd.onerror = () => { dataState.msg = `Couldn't read ${f.name}.`; renderData(); };
-      rd.readAsText(f);
-    });
-    const on = (id, fn) => { const b = main.querySelector(id); if (b) b.addEventListener('click', fn); };
-    on('#d7-reset', () => { dataState.confirm = true; renderData(); });
-    on('#d7-reset-no', () => { dataState.confirm = false; renderData(); });
-    on('#d7-reset-yes', () => { Store.reset(); dataState.confirm = false; dataState.msg = 'Local data cleared.'; renderData(); });
-  }
-  TABS.push({ id: 'data', label: 'Data', render: renderData });
-
   function downloadCSV(filename, head, rows) {
     const cell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const csv = [head, ...rows].map(r => r.map(cell).join(',')).join('\r\n');
@@ -1821,9 +1399,13 @@ ${['body.d7-print', 'body:has(> #d0007-root:not([style*="none"]))'].map(scope =>
   }
 
   // --- shell ------------------------------------------------------------
+  // Full screen overlay on top of the portal page. Esc or Close puts the
+  // portal back exactly as it was.
   function addStyles() { if (!document.getElementById('d0007-css')) document.head.appendChild(el('style', { id: 'd0007-css' }, CSS_PARTS.join('\n'))); }
+  let saidHello = false;
   function open() {
     if (root) { root.style.display = 'flex'; return; }
+    if (!saidHello) { saidHello = true; try { console.info("Cam's VMS Console - built out of spite, mostly. Cam Prosic, Deputy Chief Ops, SJA Hamilton D0007."); } catch (e) { /* no console, no problem */ } }
     addStyles();
     root = el('div', { id: 'd0007-root', role: 'dialog', 'aria-label': APP_TITLE });
     root.innerHTML = `<header><h1>${esc(APP_TITLE)}</h1><span class="sp"></span><button class="btn" id="d7-refresh" title="Re-fetch everything from VMS">Refresh</button><button class="btn" id="d7-close">Close ✕</button></header>
@@ -1842,10 +1424,11 @@ ${['body.d7-print', 'body:has(> #d0007-root:not([style*="none"]))'].map(scope =>
 
   W.D0007 = Object.assign({ open, close, render, state, version: '0.2.0' }, D);
 
-  // Floating launcher button. Skip it inside iframes (the portal loads entity
-  // forms in modals and the script would run there too). Styles go in first -
-  // v0.1.1 only added them when the console opened, which left this button
-  // unstyled at the bottom of the page. Thanks, Safari, for making me notice.
+  // Floating launcher button. Skip it inside iframes (the portal loads its
+  // entity forms in modal iframes and the script would run in there too).
+  // Styles go in first - 0.1.1 only added them when the console opened, so on
+  // Safari the button was a plain grey <button> at the very bottom of the page
+  // and I spent twenty minutes thinking Teampermonkey wasnt running at all.
   if (window.top === window.self && document.body) {
     addStyles();
     const b = el('button', { id: 'd0007-launch', type: 'button', title: APP_TITLE }, 'VMS');
@@ -1853,8 +1436,8 @@ ${['body.d7-print', 'body:has(> #d0007-root:not([style*="none"]))'].map(scope =>
     document.body.appendChild(b);
     if (location.hash === '#d0007') open();
   }
-  // Second way in, from the Tampermonkey icon menu, in case the button is ever
-  // hidden by something on the page.
+  // Second way in, from the Tampermonkey icon menu, for when the button is
+  // hidden behind something or I've broken the css again.
   if (typeof GM_registerMenuCommand === 'function') {
     try { GM_registerMenuCommand("Open Cam's VMS Console", open); } catch (e) { }
   }

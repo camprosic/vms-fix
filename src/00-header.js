@@ -14,41 +14,53 @@
 
 /*
  * Cam's VMS Console
+ * Cam Prosic - Deputy Chief Ops, SJA Hamilton D0007
  *
- * The national VMS rollout gave group leads a dashboard that shows "Pending
- * Approval" and "Pending Publish" and not much else. Everything a unit
- * actually needs week to week - who's on Saturday's event, are we short,
- * whose certs lapse next month, who's done what this year - is in the
- * database, it's just spread across six pages and five csv downloads.
- * I'd rather this had shipped with the product. It didn't, so here we are.
+ * Built out of spite, mostly. National rolled out VMS, told us it was the
+ * future, and gave group leads a dashboard with "Pending Approval" and
+ * "Pending Publish" on it and basically nothing else. Everything I actually
+ * need on a Tuesday night - whos on the Ti-Cats game saturday, are we short,
+ * whose MFR cert dies next month, how many hours did someone do this year -
+ * is all sitting in the database. Its just spread across six pages and five
+ * seperate csv downloads and you have to click through every single one.
  *
- * Everything is read off the same pages and feeds the portal already serves
- * to a signed-in group lead. The one write is approving reported shift hours
- * (Hours tab), which goes through the portal's own approval form after you've
- * confirmed exactly what's about to change.
+ * I get that its a national platform with a hundred programs to serve and a
+ * small team behind it. I still shouldnt have to write this. But here we are.
+ *
+ * Nothing clever: this reads the exact same pages and feeds the portal already
+ * gives a signed in group lead and puts them on one screen. The one thing it
+ * writes back is shift hour approvals (Hours tab) and that goes through the
+ * portals own approval form, after you've read a list of exactly whats about
+ * to change and said yes.
+ *
+ * If you're from another unit and want this - change GROUP_ID below and
+ * you're done. Hope its useful.
  */
 (function () {
   'use strict';
-  // Tampermonkey runs us in a sandbox once a GM_ function is granted; the real
-  // page window is unsafeWindow. Fall back to window for the bookmarklet route.
+  // Tampermonkey sandboxes the script once you ask for a GM_ function, so the
+  // real page window is unsafeWindow. window is for the bookmarklet route
+  // (learned this the hard way on Safari).
   const W = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
   if (W.D0007) return;
 
   // --- config ---------------------------------------------------------
-  // Group id for Hamilton-Wentworth Division. Grab it from the groupid= param
-  // on any Group Lead page if it ever changes.
+  // Our group id (Hamilton-Wentworth Division = D0007). Its in the groupid=
+  // param on every Group Lead page if it ever changes or you're another unit.
   const GROUP_ID = 'cf450413-327a-ed11-81ad-0022486d6297'; // HAMILTON-WENTWORTH DIVISION (D0007)
   const APP_TITLE = "Cam's VMS Console";
   const TZ = 'America/Toronto';
   const CERT_WARN_DAYS = 90;
   const SITE_ID = '24684e99-f092-4556-8b54-060fd532e73b'; // portal website id, used in the subgrid endpoint path
 
-  // Modules register themselves here (data modules on D, screens on TABS) so a
-  // new screen is one file in src/ and nothing else has to change.
+  // Modules register themselves here (data stuff on D, screens on TABS) so
+  // adding a screen is one new file in src/ and nothing else to touch.
   const D = {};
   const TABS = [];   // { id, label, render: async () => void }
 
   // --- small helpers ----------------------------------------------------
+  // The usual pile. toDate is the important one - VMS hands back dates in
+  // three different formats depending on which page you asked.
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const el = (tag, attrs = {}, html = '') => { const n = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (k === 'class') n.className = v; else if (k.startsWith('on')) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v); } n.innerHTML = html; return n; };
   const toDate = v => {

@@ -1,19 +1,19 @@
   // ---- Hours ----
-  // Two things on this tab. The top is the pending-approval queue, which is
-  // the one place this script writes to VMS (the mechanics are in
-  // 22-approve.js). Below it, collapsed, is the hours report that used to be
-  // the whole tab.
+  // Two things here. Top is the pending approval queue, the one place this
+  // script writes to VMS (mechanics in 22-approve.js). Under it, collapsed, is
+  // the hours report that used to be this whole tab.
   //
-  // Nothing is written until the person presses Submit, reads the list of
-  // exactly what will change, and presses Confirm. Each row's start/end/hours
-  // come from the shift's own approval form (read when the row is first
-  // touched), not from the list page, so what's shown is what gets sent.
+  // Nothing gets written until you press Submit, read the list of exactly
+  // whats going to change, and press Confirm. Each rows start/end/hours come
+  // from the shifts own approval form (read when you first touch the row), not
+  // from the list page, so what you see is what gets sent. I've been burned by
+  // the list page rounding before.
   const AP = { list: null, total: 0, truncated: false, progress: '', error: null, rows: new Map(), closed: new Set(), confirm: null, running: null, lastRun: null, reportOpen: false, loadToken: 0, evHours: {}, reportRows: [] };
   const AP_STATUSES = [[Approvals.STATUS.APPROVED, 'Approve'], [Approvals.STATUS.NO_SHOW, 'No show'], [Approvals.STATUS.CANCELLED, 'Cancel'], [Approvals.STATUS.PENDING, 'Leave pending']];
   const AP_SPIN = ' <span class="ap-spin" title="Reading the shift from VMS…"></span>';
 
   const apRow = item => ({ id: item.shiftId, item, form: null, formLoading: false, formError: null, formPromise: null, sel: false, status: Approvals.STATUS.APPROVED, edits: {}, timesOpen: false, result: null });
-  // Until the form has been read, the list page's start and hours stand in.
+  // Until the form has been read the list pages start and hours stand in.
   const apBase = r => r.form || { start: r.item.start, end: r.item.start ? new Date(r.item.start.getTime() + r.item.hours * 3600000) : null, hours: r.item.hours, status: Approvals.STATUS.PENDING };
   function apView(r) { try { return { v: Approvals.plan(apBase(r), { ...r.edits, status: r.status }), err: null }; } catch (e) { return { v: null, err: e.message || String(e) }; } }
   const apShown = r => { const { v, err } = apView(r); const b = apBase(r); return { start: v ? v.start : (r.edits.start || b.start), end: v ? v.end : (r.edits.end || b.end), hours: v ? v.hours : (r.edits.hours ?? b.hours), err }; };
@@ -27,15 +27,15 @@
   const apSelected = () => [...AP.rows.values()].filter(r => r.sel);
   const apBusy = () => !!(AP.confirm || AP.running);
 
-  // Entry from the tab bar or Refresh: start over.
+  // Entry from the tab bar or Refresh - start over (unless a batch is running).
   async function renderHours() {
     if (AP.running) { await paintHours(); return; }   // a batch is mid-flight; just show it
     Object.assign(AP, { list: null, error: null, confirm: null, running: null, rows: new Map(), progress: '' });
     await apLoad();
   }
-  // keepRows keeps selections, edits and results for shifts still pending
-  // (used after a run and by Reload); quiet leaves the current list on screen
-  // while the new one comes in.
+  // keepRows keeps your selections, edits and results for shifts still pending
+  // (used after a run and by Reload). quiet leaves the current list on screen
+  // while the new one comes in instead of flashing a spinner at you.
   async function apLoad({ keepRows = false, quiet = false } = {}) {
     const token = ++AP.loadToken;
     const prev = AP.rows;
@@ -58,6 +58,8 @@
   }
 
   // --- the shift form, read lazily, three at a time ---
+  // Each one is a ~60KB page for four numbers. Three at a time keeps the
+  // portal from getting grumpy.
   const apQueue = []; let apInFlight = 0;
   function apPump() { while (apInFlight < 3 && apQueue.length) { apInFlight++; apQueue.shift()().finally(() => { apInFlight--; apPump(); }); } }
   function apEnsureForm(r) {
@@ -176,7 +178,8 @@
       <ul class="plain">${l.done.map(d => `<li><span class="ap-ok">✓</span><span>${apChangeLine(d.name, d.event, d.values, null)}</span></li>`).join('')}${l.failed.map(f => `<li><span class="ap-bad">✗</span><span>${esc(f.name)} — ${esc(f.event)}</span><span class="pill red">${esc(f.error)}</span></li>`).join('')}</ul></div>`;
   }
 
-  // In-place updates so typing in one row doesn't repaint the screen.
+  // In-place updates so typing in one row doesnt repaint the whole screen and
+  // throw your cursor away.
   function apRowDom(r, { keepHours = false } = {}) {
     if (AP.rows.get(r.id) !== r) return;   // an older copy of this row (a reload happened); its DOM isn't ours
     const tr = main && main.querySelector(`tr.ap-row[data-id="${r.id}"]`); if (!tr) return;
@@ -244,13 +247,14 @@
     });
   }
 
-  // --- submit → confirm → run ---
+  // --- submit -> confirm -> run ---
+  // Yes, two steps. Its 143 peoples hours.
   async function apBeginConfirm() {
     const sel = apSelected(); if (!sel.length || apBusy()) return;
     AP.confirm = { loading: true, items: [] };
     await paintHours();
-    // Always read the forms again here: the panel must describe VMS as it is
-    // now, not as it was when the row was first clicked.
+    // Always re-read the forms here. The panel has to describe VMS as it is
+    // right now, not as it was when you first clicked the row ten minutes ago.
     sel.forEach(r => { r.form = null; r.formError = null; });
     await Promise.all(sel.map(apEnsureForm));
     if (!AP.confirm || !AP.confirm.loading) return;   // cancelled meanwhile
@@ -283,7 +287,7 @@
     });
     AP.running = null;
     AP.lastRun = { at: new Date(), done: res.done.map(d => ({ name: d.row.item.name, event: d.row.item.event, values: d.values })), failed: res.failed.map(f => ({ name: f.row.item.name, event: f.row.item.event, error: f.error })) };
-    // Done ones leave the queue now; the reload below is the real check.
+    // Done ones leave the queue now, the reload below is the real check.
     for (const d of res.done) AP.rows.delete(d.shiftId);
     AP.list = AP.list.filter(it => AP.rows.has(it.shiftId));
     for (const f of res.failed) { const r = AP.rows.get(f.shiftId); if (r) { r.sel = true; r.form = null; } }   // re-read the form before any retry
@@ -292,6 +296,8 @@
   }
 
   // --- the hours report (unchanged, just folded under a toggle) ---
+  // Reports > Volunteer Hours in the portal is 10 rows a page with no totals.
+  // This adds the totals. Thats it. Thats the feature.
   async function hoursReportHTML() {
     const hrs = await VMS.hours(state.hoursWin);
     const q = state.q;
