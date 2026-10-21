@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         D0007 Ops Console — VMS wrapper prototype
 // @namespace    sja-hamilton-d0007
-// @version      0.1.1
+// @version      0.1.2
 // @description  Read-only, D0007-tailored view over the SJA VMS portal (events, staffing, roster, hours, certifications) using your own signed-in session. No data is written.
 // @match        https://volunteer-sja.powerappsportals.com/*
 // @homepageURL  https://github.com/camprosic/vms-fix
 // @supportURL   https://github.com/camprosic/vms-fix/issues
 // @updateURL    https://raw.githubusercontent.com/camprosic/vms-fix/main/d0007-ops.user.js
 // @downloadURL  https://raw.githubusercontent.com/camprosic/vms-fix/main/d0007-ops.user.js
-// @grant        none
+// @grant        GM_registerMenuCommand
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -27,7 +27,10 @@
  */
 (function () {
   'use strict';
-  if (window.D0007) return;
+  // Tampermonkey runs us in a sandbox once a GM_ function is granted; the real
+  // page window is unsafeWindow. Fall back to window for the bookmarklet route.
+  const W = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+  if (W.D0007) return;
 
   // --- config ---------------------------------------------------------
   // Group id for Hamilton-Wentworth Division. Grab it from the groupid= param
@@ -523,9 +526,10 @@
   }
 
   // --- shell ------------------------------------------------------------
+  function addStyles() { if (!document.getElementById('d0007-css')) document.head.appendChild(el('style', { id: 'd0007-css' }, CSS)); }
   function open() {
     if (root) { root.style.display = 'flex'; return; }
-    if (!document.getElementById('d0007-css')) document.head.appendChild(el('style', { id: 'd0007-css' }, CSS));
+    addStyles();
     root = el('div', { id: 'd0007-root', role: 'dialog', 'aria-label': 'D0007 Ops Console' });
     root.innerHTML = `<header><h1>${esc(UNIT_LABEL)}</h1><span class="sub">Ops Console · prototype · read-only</span><span class="sp"></span><button class="btn" id="d7-refresh" title="Re-fetch everything from VMS">Refresh</button><button class="btn" id="d7-close">Close ✕</button></header>
       <nav>${[['events', 'Events'], ['roster', 'Roster'], ['hours', 'Hours'], ['certs', 'Certifications']].map(([k, l]) => `<button data-tab="${k}">${l}</button>`).join('')}</nav>
@@ -541,14 +545,22 @@
   }
   function close() { if (root) root.style.display = 'none'; }
 
-  window.D0007 = { open, close, VMS, version: '0.1.1' };
+  W.D0007 = { open, close, VMS, version: '0.1.2' };
 
   // Floating launcher button. Skip it inside iframes (the portal loads entity
-  // forms in modals and the script would run there too).
+  // forms in modals and the script would run there too). Styles go in first -
+  // v0.1.1 only added them when the console opened, which left this button
+  // unstyled at the bottom of the page. Thanks, Safari, for making me notice.
   if (window.top === window.self && document.body) {
+    addStyles();
     const b = el('button', { id: 'd0007-launch', type: 'button', title: 'Open the D0007 Ops Console' }, 'D0007');
     b.addEventListener('click', open);
     document.body.appendChild(b);
     if (location.hash === '#d0007') open();
+  }
+  // Second way in, from the Tampermonkey icon menu, in case the button is ever
+  // hidden by something on the page.
+  if (typeof GM_registerMenuCommand === 'function') {
+    try { GM_registerMenuCommand('Open D0007 console', open); } catch (e) { }
   }
 })();
