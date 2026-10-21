@@ -1,7 +1,11 @@
   // ---- Roster ----
-  // "MFR" here means VMS has a current Medical First Responder certification on
-  // file for the person (any of the MFR qualification names). It's the same
-  // test the Schedule tab falls back on when a booking's shift type is unknown.
+  // The volunteers page in the portal is a 10-row paginated table with a csv
+  // button. This is the csv, on screen, searchable, with hours and certs a
+  // click away. Revolutionary stuff.
+  //
+  // "MFR" here means VMS has a current Medical First Responder cert on file for
+  // the person (any of the MFR qualification names). Same test the Schedule tab
+  // falls back on when it cant tell which shift someone booked.
   function mfrCertOf(name, certs) {
     const mine = certs.filter(c => norm(c.name) === norm(name) && /medical first responder/i.test(c.qualification) && c.expiry && daysUntil(c.expiry) >= 0);
     return mine.sort((a, b) => (toDate(b.expiry)?.getTime() || 0) - (toDate(a.expiry)?.getTime() || 0))[0] || null;

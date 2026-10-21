@@ -1,4 +1,7 @@
   // ---- Events ----
+  // The home page already works out "N volunteers still needed" per event card.
+  // What it doesnt do is show that across all your events on one screen, which
+  // is the single most useful number in the entire system. So, this.
   async function renderEvents() {
     const [ev, up] = await Promise.all([VMS.groupEvents(), VMS.upcomingEngagements().catch(() => [])]);
     if (!stillCurrent('events')) return;
@@ -62,8 +65,8 @@
         ${d.shifts.length ? `<div class="bar" style="margin-top:12px"><b>Reported shifts (${d.shifts.length})</b></div><div class="tbl"><table><thead><tr><th>Volunteer</th><th>Start</th><th class="n">Hours</th><th>Status</th></tr></thead><tbody>
           ${d.shifts.map(s => `<tr><td>${esc(s.name)}</td><td>${esc(fmtDT(s.start))}</td><td class="n">${s.hours || ''}</td><td>${statusPill(s.status)}${/pending/i.test(s.status) ? ` <button class="btn ap-go" data-approve="${esc(title)}" title="Open this event's pending shifts on the Hours tab">Approve…</button>` : ''}</td></tr>`).join('')}
         </tbody></table></div>` : ''}`;
-      // Pending rows jump to the Hours tab filtered to this event, so approvals
-      // can be done event by event from here.
+      // Pending rows jump to the Hours tab filtered to this event so you can
+      // approve an event right after looking at who was actually on it.
       box.querySelectorAll('[data-approve]').forEach(b => b.addEventListener('click', () => { state.pendingSearch = b.dataset.approve; state.tab = 'hours'; state.q = ''; render(); }));
     } catch (e) { box.innerHTML = `<div class="err">${esc(e.message || e)}</div>`; }
   }

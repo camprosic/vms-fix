@@ -5,6 +5,8 @@
   }
 
   // --- shell ------------------------------------------------------------
+  // Full screen overlay on top of the portal page. Esc or Close puts the
+  // portal back exactly as it was.
   function addStyles() { if (!document.getElementById('d0007-css')) document.head.appendChild(el('style', { id: 'd0007-css' }, CSS_PARTS.join('\n'))); }
   function open() {
     if (root) { root.style.display = 'flex'; return; }

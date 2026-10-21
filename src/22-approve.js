@@ -1,23 +1,26 @@
   // --- approvals ---------------------------------------------------------
-  // The one place this script writes to VMS: approving (or no-showing,
-  // cancelling, correcting) the shifts volunteers have reported. In the portal
-  // that's Group Lead > Hours, ten rows a page, one modal per shift, three or
-  // four clicks each. After a busy weekend it's an evening's work, and most of
-  // it is clicking Submit on numbers you've already checked.
+  // The one place this writes to VMS: approving (or no-showing / cancelling /
+  // fixing) the shifts people reported. In the portal thats Group Lead > Hours,
+  // ten rows a page, one modal per shift, 3-4 clicks each. After a Ti-Cats
+  // weekend with 40 shifts thats my whole evening gone, and 95% of it is
+  // clicking Submit on a number I already checked against the event form.
+  // 143 pending when I started writing this. One hundred and forty three.
   //
-  // What the portal does, and what this copies exactly:
-  //  - The Hours page renders the pending list as inline JS: one block of
-  //    assignments per shift, then a jQuery append into the table. We read the
-  //    assignments with a regex. No eval.
-  //  - Each shift's Approve link opens an entity form (modal-form-template-path)
+  // What the portal does and what this copies, exactly:
+  //  - the Hours page renders the pending list as inline JS - one block of
+  //    variable assignments per shift and then a jQuery append into the table.
+  //    So we read the assignments with a regex. no eval, dont worry.
+  //  - each shifts Approve link opens an entity form (modal-form-template-path)
   //    over msnfp_participationschedule with start, end, hours and status.
-  //    Submit is a WebForms postback of that form. We fill the same four
-  //    fields on the same form and submit it the same way, then look for the
-  //    same "Submission completed successfully." the portal's modal code looks
-  //    for before it closes.
-  // Nothing goes near the web api and nothing is guessed about field names: if
-  // the form that comes back doesn't have the inputs we expect, or is for a
-  // different record, we stop before posting anything.
+  //    Submit is a plain WebForms postback. We fill the same four fields on the
+  //    same form, submit it the same way, and look for the same "Submission
+  //    completed successfully." that the portals own modal looks for before it
+  //    closes itself.
+  // Nothing goes near the web api (see 20-vms.js for why) and nothing about
+  // field names is guessed. If the form that comes back doesnt have the inputs
+  // we expect, or is for a different record than we asked for, it stops cold
+  // before posting anything. I'd rather it fail loudly than approve the wrong
+  // persons hours.
   const Approvals = (() => {
     const STATUS = { PENDING: '335940000', APPROVED: '335940001', NO_SHOW: '335940002', CANCELLED: '335940003', WAITLIST: '962220001' };
     const STATUS_LABEL = { [STATUS.PENDING]: 'Pending', [STATUS.APPROVED]: 'Shift Hours Approved', [STATUS.NO_SHOW]: 'No Show', [STATUS.CANCELLED]: 'Cancelled', [STATUS.WAITLIST]: 'Waitlist' };
@@ -29,8 +32,9 @@
     const formUrl = shiftId => `/_portal/modal-form-template-path/${PORTAL_ID}?id=${encodeURIComponent(shiftId)}&entityformid=${FORM_ID}`;
     const hoursUrl = (page, search) => `/en-US/group-lead/hours/?groupid=${GROUP_ID}&fetchPage=${page}&fetchSearch=${encodeURIComponent(search || '')}`;
 
-    // Same-origin fetch with the same session check VMS uses. VMS keeps its
-    // helpers private and this module has to POST, so it gets its own.
+    // Same-origin fetch with the same expired-session check the VMS module
+    // has. That module keeps its helpers to itself and this one needs to POST,
+    // so it gets its own copy. Not thrilled about the duplication either.
     async function fetchOk(url, { timeout = 30000, ...opts } = {}) {
       const ac = typeof AbortController === 'function' ? new AbortController() : null;
       const timer = ac && setTimeout(() => ac.abort(), timeout);
@@ -47,12 +51,13 @@
 
     // --- dates ---
     const pad = n => String(n).padStart(2, '0');
-    // CRM wants 2026-07-26T16:00:00.0000000Z: seven fraction digits, UTC.
+    // CRM wants 2026-07-26T16:00:00.0000000Z - seven fraction digits, UTC.
+    // Seven. Not six, not three. Seven.
     function toCrmIso(v) {
       const d = toDate(v); if (!d) throw new Error('Not a date: ' + v);
       return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}.0000000Z`;
     }
-    // Safari's Date.parse doesn't like seven fraction digits, so parse by hand.
+    // Safari's Date.parse chokes on those seven digits so this parses by hand.
     function fromCrmIso(s) {
       const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:?\d{2})?$/.exec(String(s ?? '').trim());
       if (!m) return toDate(s);
@@ -60,8 +65,9 @@
       if (m[8] && m[8] !== 'Z') { const o = /([+-])(\d{2}):?(\d{2})/.exec(m[8]); ms -= (o[1] === '-' ? -1 : 1) * ((+o[2]) * 60 + (+o[3])) * 60000; }
       return new Date(ms);
     }
-    // Eastern wall-clock <-> Date, for datetime-local inputs. The form itself
-    // takes UTC; these only exist so the screen can show and take local times.
+    // Eastern wall clock <-> Date for the datetime-local inputs. The form wants
+    // UTC, people want Eastern. These two exist so nobody has to do that math
+    // at 11pm.
     const partsIn = d => Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: TZ, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).formatToParts(d).filter(p => p.type !== 'literal').map(p => [p.type, +p.value]));
     function toLocalInput(v) { const d = toDate(v); if (!d) return ''; const p = partsIn(d); return `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}`; }
     function fromLocalInput(s) {
@@ -77,11 +83,13 @@
     }
 
     // --- the pending list ---
-    // One block per shift in the page's inline script, like:
+    // There is no feed for this. The page builds the table from inline JS,
+    // one block per shift, like:
     //   shiftId = "guid"; origStartDate = "Sun, 26 Jul 2026 16:00:00 GMT";
     //   volunteerName = "..."; eventName = "..."; actionButton = ...;
     //   $("#pendingShiftsTable").append("<tr><td>" + volunteerName + ... + startDateInEST + "</td><td>5</td> ...
-    // The hours only exist as that literal <td> in the append, so read it from there.
+    // The reported hours only exist as that literal <td> in the append string.
+    // Not as a variable. Just sitting in the HTML. So we read it from there.
     const unq = s => s.replace(/\\(.)/g, '$1');
     function parseHoursPage(html) {
       const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -98,9 +106,10 @@
       return { total, items };
     }
 
-    // Walks the Hours pages. Page 1 says how many records there are; the rest
-    // go four at a time. onPage gets { loaded, total, pages, truncated } as
-    // pages land, for a progress line.
+    // Walks the Hours pages. Page 1 tells us how many records there are, the
+    // rest get fetched four at a time. onPage gets { loaded, total, pages,
+    // truncated } as they land so the screen can show a progress line instead
+    // of just sitting there.
     async function pending({ search = '', maxPages = 50, onPage } = {}) {
       const first = parseHoursPage(await getText(hoursUrl(1, search)));
       const total = Math.max(first.total, first.items.length);
@@ -119,9 +128,10 @@
     }
 
     // --- the approval form ---
-    // Refuses to go further unless the page is the form we expect, for the
-    // record we asked for. Cheap insurance against VMS changing the form
-    // under us and this script posting into the wrong thing.
+    // Refuses to go any further unless the page is the form we expect, for the
+    // record we asked for. Cheap insurance against national changing the form
+    // under us (they will, eventually, without telling anyone) and this thing
+    // posting into the wrong place.
     function checkForm(doc, shiftId) {
       const idInput = doc.getElementById('EntityFormControl_EntityFormView_EntityID');
       if (!idInput) throw new Error('The approval form has no record id field. VMS may have changed the form; not posting.');
@@ -146,10 +156,11 @@
       if (hraw && !/^\d+(\.\d+)?$/.test(hraw)) throw new Error(`The form's hours value "${hraw}" isn't a plain number; not touching this shift.`);
       return { shiftId, participation: v('msnfp_participationid_name'), scheduleName: v('msnfp_engagementopportunityscheduleid_name'), scheduleId: v('msnfp_engagementopportunityscheduleid'), participationId: v('msnfp_participationid'), start: fromCrmIso(v('sjavms_start')), end: fromCrmIso(v('sjavms_end')), hours: hraw ? Number(hraw) : 0, status, statusOptions };
     }
-    // Belt and braces at post time: the form we're about to submit must still
-    // be Pending, for the volunteer we think it is, and (if the caller tells
-    // us what it read earlier) unchanged since then. Another lead could have
-    // approved it in the meantime; we don't paint over that.
+    // Belt and suspenders at post time: the form we're about to submit has to
+    // still be Pending, for the volunteer we think it is, and (if the caller
+    // tells us what it read earlier) unchanged since then. Another lead can
+    // approve the same shift while you're looking at it - we dont paint over
+    // that, we bail and tell you.
     function verifyLive(doc, shiftId, expect) {
       if (!expect) return;
       const live = readForm(doc, shiftId);
@@ -163,10 +174,11 @@
     }
     const loadForm = async shiftId => readForm(await getDoc(formUrl(shiftId)), shiftId);
 
-    // Pure. Works out what the four fields should be from the loaded form plus
-    // whatever changed, and refuses the combinations VMS would reject or that
-    // are obviously wrong. The screen calls this on every edit so the row
-    // always shows exactly what would be sent.
+    // Pure function. Works out what the four fields should be from the loaded
+    // form plus whatever you changed, and refuses the combos VMS would reject or
+    // that are obviously wrong (negative hours, end before start, a 30 hour
+    // shift...). The screen runs this on every keystroke so what you see in
+    // the row is exactly what gets sent.
     function plan(form, changes = {}) {
       const status = String(changes.status ?? form.status ?? STATUS.PENDING);
       if (!STATUS_LABEL[status]) throw new Error(`"${status}" is not a shift status VMS knows`);
@@ -179,8 +191,8 @@
       if (given(changes.end) && !end) throw new Error('Shift end is not a valid date');
       if (hours !== null && hours < 0) throw new Error('Hours can\'t be negative');
       if (hours === null && end === null) {
-        // Nothing about the length changed: keep the form's hours, and its end
-        // too unless the start moved (then the whole shift moves).
+        // Nothing about the length changed - keep the forms hours, and its end
+        // too unless the start moved (then the whole shift slides).
         hours = Number(form.hours) || 0;
         const fs = toDate(form.start);
         if (fs && fs.getTime() === start.getTime()) end = toDate(form.end);
@@ -195,9 +207,9 @@
     }
 
     // --- submitting ---
-    // Sets the four inputs on a (parsed or live) form document and fires
-    // change on each, the way a person's edits would. Throws if the status
-    // isn't one of the form's options.
+    // Sets the four inputs on a (parsed or live) form document and fires change
+    // on each one, same as if someone typed it. Throws if the status isnt one
+    // of the forms options.
     function fillForm(doc, fields) {
       for (const [id, val] of Object.entries(fields)) {
         const n = doc.getElementById(id);
@@ -206,7 +218,8 @@
         const ev = doc.createEvent('Event'); ev.initEvent('change', true, true); n.dispatchEvent(ev);
       }
     }
-    // What the portal's modal checks for after the postback, and what we check.
+    // What the portals own modal checks for after the postback. So its what we
+    // check for too - no guessing.
     function readResult(doc) {
       const msg = (doc.getElementById('MessageLabel')?.textContent || '').trim();
       if (msg === SUCCESS) return { ok: true };
@@ -221,9 +234,9 @@
       return { sjavms_start: toCrmIso(v.start), sjavms_end: toCrmIso(v.end), sjavms_hours: v.hours.toFixed(2), msnfp_schedulestatus: v.status };
     }
 
-    // Production driver. A hidden same-origin iframe loads the real form, so
-    // the portal's own scripts (date pickers, client validators, the WebForms
-    // postback) all run as they would in the modal. Sequence:
+    // The real driver. A hidden same-origin iframe loads the actual form, so the
+    // portals own scripts (date pickers, client validators, the WebForms
+    // postback) all run exactly like they do in the modal. Sequence:
     //   1. iframe <- GET modal form
     //   2. on load: sanity-check the form, set the four fields, fire change
     //   3. click #UpdateButton (its onclick validates then posts back);

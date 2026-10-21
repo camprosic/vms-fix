@@ -14,41 +14,53 @@
 
 /*
  * Cam's VMS Console
+ * Cam Prosic - Deputy Chief Ops, SJA Hamilton D0007
  *
- * The national VMS rollout gave group leads a dashboard that shows "Pending
- * Approval" and "Pending Publish" and not much else. Everything a unit
- * actually needs week to week - who's on Saturday's event, are we short,
- * whose certs lapse next month, who's done what this year - is in the
- * database, it's just spread across six pages and five csv downloads.
- * I'd rather this had shipped with the product. It didn't, so here we are.
+ * Built out of spite, mostly. National rolled out VMS, told us it was the
+ * future, and gave group leads a dashboard with "Pending Approval" and
+ * "Pending Publish" on it and basically nothing else. Everything I actually
+ * need on a Tuesday night - whos on the Ti-Cats game saturday, are we short,
+ * whose MFR cert dies next month, how many hours did someone do this year -
+ * is all sitting in the database. Its just spread across six pages and five
+ * seperate csv downloads and you have to click through every single one.
  *
- * Everything is read off the same pages and feeds the portal already serves
- * to a signed-in group lead. The one write is approving reported shift hours
- * (Hours tab), which goes through the portal's own approval form after you've
- * confirmed exactly what's about to change.
+ * I get that its a national platform with a hundred programs to serve and a
+ * small team behind it. I still shouldnt have to write this. But here we are.
+ *
+ * Nothing clever: this reads the exact same pages and feeds the portal already
+ * gives a signed in group lead and puts them on one screen. The one thing it
+ * writes back is shift hour approvals (Hours tab) and that goes through the
+ * portals own approval form, after you've read a list of exactly whats about
+ * to change and said yes.
+ *
+ * If you're from another unit and want this - change GROUP_ID below and
+ * you're done. Hope its useful.
  */
 (function () {
   'use strict';
-  // Tampermonkey runs us in a sandbox once a GM_ function is granted; the real
-  // page window is unsafeWindow. Fall back to window for the bookmarklet route.
+  // Tampermonkey sandboxes the script once you ask for a GM_ function, so the
+  // real page window is unsafeWindow. window is for the bookmarklet route
+  // (learned this the hard way on Safari).
   const W = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
   if (W.D0007) return;
 
   // --- config ---------------------------------------------------------
-  // Group id for Hamilton-Wentworth Division. Grab it from the groupid= param
-  // on any Group Lead page if it ever changes.
+  // Our group id (Hamilton-Wentworth Division = D0007). Its in the groupid=
+  // param on every Group Lead page if it ever changes or you're another unit.
   const GROUP_ID = 'cf450413-327a-ed11-81ad-0022486d6297'; // HAMILTON-WENTWORTH DIVISION (D0007)
   const APP_TITLE = "Cam's VMS Console";
   const TZ = 'America/Toronto';
   const CERT_WARN_DAYS = 90;
   const SITE_ID = '24684e99-f092-4556-8b54-060fd532e73b'; // portal website id, used in the subgrid endpoint path
 
-  // Modules register themselves here (data modules on D, screens on TABS) so a
-  // new screen is one file in src/ and nothing else has to change.
+  // Modules register themselves here (data stuff on D, screens on TABS) so
+  // adding a screen is one new file in src/ and nothing else to touch.
   const D = {};
   const TABS = [];   // { id, label, render: async () => void }
 
   // --- small helpers ----------------------------------------------------
+  // The usual pile. toDate is the important one - VMS hands back dates in
+  // three different formats depending on which page you asked.
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const el = (tag, attrs = {}, html = '') => { const n = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (k === 'class') n.className = v; else if (k.startsWith('on')) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v); } n.innerHTML = html; return n; };
   const toDate = v => {
@@ -372,25 +384,28 @@
   D.VMS = VMS;
 
   // --- approvals ---------------------------------------------------------
-  // The one place this script writes to VMS: approving (or no-showing,
-  // cancelling, correcting) the shifts volunteers have reported. In the portal
-  // that's Group Lead > Hours, ten rows a page, one modal per shift, three or
-  // four clicks each. After a busy weekend it's an evening's work, and most of
-  // it is clicking Submit on numbers you've already checked.
+  // The one place this writes to VMS: approving (or no-showing / cancelling /
+  // fixing) the shifts people reported. In the portal thats Group Lead > Hours,
+  // ten rows a page, one modal per shift, 3-4 clicks each. After a Ti-Cats
+  // weekend with 40 shifts thats my whole evening gone, and 95% of it is
+  // clicking Submit on a number I already checked against the event form.
+  // 143 pending when I started writing this. One hundred and forty three.
   //
-  // What the portal does, and what this copies exactly:
-  //  - The Hours page renders the pending list as inline JS: one block of
-  //    assignments per shift, then a jQuery append into the table. We read the
-  //    assignments with a regex. No eval.
-  //  - Each shift's Approve link opens an entity form (modal-form-template-path)
+  // What the portal does and what this copies, exactly:
+  //  - the Hours page renders the pending list as inline JS - one block of
+  //    variable assignments per shift and then a jQuery append into the table.
+  //    So we read the assignments with a regex. no eval, dont worry.
+  //  - each shifts Approve link opens an entity form (modal-form-template-path)
   //    over msnfp_participationschedule with start, end, hours and status.
-  //    Submit is a WebForms postback of that form. We fill the same four
-  //    fields on the same form and submit it the same way, then look for the
-  //    same "Submission completed successfully." the portal's modal code looks
-  //    for before it closes.
-  // Nothing goes near the web api and nothing is guessed about field names: if
-  // the form that comes back doesn't have the inputs we expect, or is for a
-  // different record, we stop before posting anything.
+  //    Submit is a plain WebForms postback. We fill the same four fields on the
+  //    same form, submit it the same way, and look for the same "Submission
+  //    completed successfully." that the portals own modal looks for before it
+  //    closes itself.
+  // Nothing goes near the web api (see 20-vms.js for why) and nothing about
+  // field names is guessed. If the form that comes back doesnt have the inputs
+  // we expect, or is for a different record than we asked for, it stops cold
+  // before posting anything. I'd rather it fail loudly than approve the wrong
+  // persons hours.
   const Approvals = (() => {
     const STATUS = { PENDING: '335940000', APPROVED: '335940001', NO_SHOW: '335940002', CANCELLED: '335940003', WAITLIST: '962220001' };
     const STATUS_LABEL = { [STATUS.PENDING]: 'Pending', [STATUS.APPROVED]: 'Shift Hours Approved', [STATUS.NO_SHOW]: 'No Show', [STATUS.CANCELLED]: 'Cancelled', [STATUS.WAITLIST]: 'Waitlist' };
@@ -402,8 +417,9 @@
     const formUrl = shiftId => `/_portal/modal-form-template-path/${PORTAL_ID}?id=${encodeURIComponent(shiftId)}&entityformid=${FORM_ID}`;
     const hoursUrl = (page, search) => `/en-US/group-lead/hours/?groupid=${GROUP_ID}&fetchPage=${page}&fetchSearch=${encodeURIComponent(search || '')}`;
 
-    // Same-origin fetch with the same session check VMS uses. VMS keeps its
-    // helpers private and this module has to POST, so it gets its own.
+    // Same-origin fetch with the same expired-session check the VMS module
+    // has. That module keeps its helpers to itself and this one needs to POST,
+    // so it gets its own copy. Not thrilled about the duplication either.
     async function fetchOk(url, { timeout = 30000, ...opts } = {}) {
       const ac = typeof AbortController === 'function' ? new AbortController() : null;
       const timer = ac && setTimeout(() => ac.abort(), timeout);
@@ -420,12 +436,13 @@
 
     // --- dates ---
     const pad = n => String(n).padStart(2, '0');
-    // CRM wants 2026-07-26T16:00:00.0000000Z: seven fraction digits, UTC.
+    // CRM wants 2026-07-26T16:00:00.0000000Z - seven fraction digits, UTC.
+    // Seven. Not six, not three. Seven.
     function toCrmIso(v) {
       const d = toDate(v); if (!d) throw new Error('Not a date: ' + v);
       return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}.0000000Z`;
     }
-    // Safari's Date.parse doesn't like seven fraction digits, so parse by hand.
+    // Safari's Date.parse chokes on those seven digits so this parses by hand.
     function fromCrmIso(s) {
       const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:?\d{2})?$/.exec(String(s ?? '').trim());
       if (!m) return toDate(s);
@@ -433,8 +450,9 @@
       if (m[8] && m[8] !== 'Z') { const o = /([+-])(\d{2}):?(\d{2})/.exec(m[8]); ms -= (o[1] === '-' ? -1 : 1) * ((+o[2]) * 60 + (+o[3])) * 60000; }
       return new Date(ms);
     }
-    // Eastern wall-clock <-> Date, for datetime-local inputs. The form itself
-    // takes UTC; these only exist so the screen can show and take local times.
+    // Eastern wall clock <-> Date for the datetime-local inputs. The form wants
+    // UTC, people want Eastern. These two exist so nobody has to do that math
+    // at 11pm.
     const partsIn = d => Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: TZ, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).formatToParts(d).filter(p => p.type !== 'literal').map(p => [p.type, +p.value]));
     function toLocalInput(v) { const d = toDate(v); if (!d) return ''; const p = partsIn(d); return `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}`; }
     function fromLocalInput(s) {
@@ -450,11 +468,13 @@
     }
 
     // --- the pending list ---
-    // One block per shift in the page's inline script, like:
+    // There is no feed for this. The page builds the table from inline JS,
+    // one block per shift, like:
     //   shiftId = "guid"; origStartDate = "Sun, 26 Jul 2026 16:00:00 GMT";
     //   volunteerName = "..."; eventName = "..."; actionButton = ...;
     //   $("#pendingShiftsTable").append("<tr><td>" + volunteerName + ... + startDateInEST + "</td><td>5</td> ...
-    // The hours only exist as that literal <td> in the append, so read it from there.
+    // The reported hours only exist as that literal <td> in the append string.
+    // Not as a variable. Just sitting in the HTML. So we read it from there.
     const unq = s => s.replace(/\\(.)/g, '$1');
     function parseHoursPage(html) {
       const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -471,9 +491,10 @@
       return { total, items };
     }
 
-    // Walks the Hours pages. Page 1 says how many records there are; the rest
-    // go four at a time. onPage gets { loaded, total, pages, truncated } as
-    // pages land, for a progress line.
+    // Walks the Hours pages. Page 1 tells us how many records there are, the
+    // rest get fetched four at a time. onPage gets { loaded, total, pages,
+    // truncated } as they land so the screen can show a progress line instead
+    // of just sitting there.
     async function pending({ search = '', maxPages = 50, onPage } = {}) {
       const first = parseHoursPage(await getText(hoursUrl(1, search)));
       const total = Math.max(first.total, first.items.length);
@@ -492,9 +513,10 @@
     }
 
     // --- the approval form ---
-    // Refuses to go further unless the page is the form we expect, for the
-    // record we asked for. Cheap insurance against VMS changing the form
-    // under us and this script posting into the wrong thing.
+    // Refuses to go any further unless the page is the form we expect, for the
+    // record we asked for. Cheap insurance against national changing the form
+    // under us (they will, eventually, without telling anyone) and this thing
+    // posting into the wrong place.
     function checkForm(doc, shiftId) {
       const idInput = doc.getElementById('EntityFormControl_EntityFormView_EntityID');
       if (!idInput) throw new Error('The approval form has no record id field. VMS may have changed the form; not posting.');
@@ -519,10 +541,11 @@
       if (hraw && !/^\d+(\.\d+)?$/.test(hraw)) throw new Error(`The form's hours value "${hraw}" isn't a plain number; not touching this shift.`);
       return { shiftId, participation: v('msnfp_participationid_name'), scheduleName: v('msnfp_engagementopportunityscheduleid_name'), scheduleId: v('msnfp_engagementopportunityscheduleid'), participationId: v('msnfp_participationid'), start: fromCrmIso(v('sjavms_start')), end: fromCrmIso(v('sjavms_end')), hours: hraw ? Number(hraw) : 0, status, statusOptions };
     }
-    // Belt and braces at post time: the form we're about to submit must still
-    // be Pending, for the volunteer we think it is, and (if the caller tells
-    // us what it read earlier) unchanged since then. Another lead could have
-    // approved it in the meantime; we don't paint over that.
+    // Belt and suspenders at post time: the form we're about to submit has to
+    // still be Pending, for the volunteer we think it is, and (if the caller
+    // tells us what it read earlier) unchanged since then. Another lead can
+    // approve the same shift while you're looking at it - we dont paint over
+    // that, we bail and tell you.
     function verifyLive(doc, shiftId, expect) {
       if (!expect) return;
       const live = readForm(doc, shiftId);
@@ -536,10 +559,11 @@
     }
     const loadForm = async shiftId => readForm(await getDoc(formUrl(shiftId)), shiftId);
 
-    // Pure. Works out what the four fields should be from the loaded form plus
-    // whatever changed, and refuses the combinations VMS would reject or that
-    // are obviously wrong. The screen calls this on every edit so the row
-    // always shows exactly what would be sent.
+    // Pure function. Works out what the four fields should be from the loaded
+    // form plus whatever you changed, and refuses the combos VMS would reject or
+    // that are obviously wrong (negative hours, end before start, a 30 hour
+    // shift...). The screen runs this on every keystroke so what you see in
+    // the row is exactly what gets sent.
     function plan(form, changes = {}) {
       const status = String(changes.status ?? form.status ?? STATUS.PENDING);
       if (!STATUS_LABEL[status]) throw new Error(`"${status}" is not a shift status VMS knows`);
@@ -552,8 +576,8 @@
       if (given(changes.end) && !end) throw new Error('Shift end is not a valid date');
       if (hours !== null && hours < 0) throw new Error('Hours can\'t be negative');
       if (hours === null && end === null) {
-        // Nothing about the length changed: keep the form's hours, and its end
-        // too unless the start moved (then the whole shift moves).
+        // Nothing about the length changed - keep the forms hours, and its end
+        // too unless the start moved (then the whole shift slides).
         hours = Number(form.hours) || 0;
         const fs = toDate(form.start);
         if (fs && fs.getTime() === start.getTime()) end = toDate(form.end);
@@ -568,9 +592,9 @@
     }
 
     // --- submitting ---
-    // Sets the four inputs on a (parsed or live) form document and fires
-    // change on each, the way a person's edits would. Throws if the status
-    // isn't one of the form's options.
+    // Sets the four inputs on a (parsed or live) form document and fires change
+    // on each one, same as if someone typed it. Throws if the status isnt one
+    // of the forms options.
     function fillForm(doc, fields) {
       for (const [id, val] of Object.entries(fields)) {
         const n = doc.getElementById(id);
@@ -579,7 +603,8 @@
         const ev = doc.createEvent('Event'); ev.initEvent('change', true, true); n.dispatchEvent(ev);
       }
     }
-    // What the portal's modal checks for after the postback, and what we check.
+    // What the portals own modal checks for after the postback. So its what we
+    // check for too - no guessing.
     function readResult(doc) {
       const msg = (doc.getElementById('MessageLabel')?.textContent || '').trim();
       if (msg === SUCCESS) return { ok: true };
@@ -594,9 +619,9 @@
       return { sjavms_start: toCrmIso(v.start), sjavms_end: toCrmIso(v.end), sjavms_hours: v.hours.toFixed(2), msnfp_schedulestatus: v.status };
     }
 
-    // Production driver. A hidden same-origin iframe loads the real form, so
-    // the portal's own scripts (date pickers, client validators, the WebForms
-    // postback) all run as they would in the modal. Sequence:
+    // The real driver. A hidden same-origin iframe loads the actual form, so the
+    // portals own scripts (date pickers, client validators, the WebForms
+    // postback) all run exactly like they do in the modal. Sequence:
     //   1. iframe <- GET modal form
     //   2. on load: sanity-check the form, set the four fields, fire change
     //   3. click #UpdateButton (its onclick validates then posts back);
@@ -710,7 +735,8 @@
   D.Approvals = Approvals;
 
   // --- styles -----------------------------------------------------------
-  // Everything is scoped under #d0007-root so we don't fight the portal css.
+  // All scoped under #d0007-root so we dont fight the portals bootstrap. The
+  // green is close to the SJA green, the rest is whatever didnt look terrible.
   const CSS = `
 #d0007-root{position:fixed;inset:0;z-index:2147483000;background:#f3f5f2;color:#1d2a1f;font:14px/1.45 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;display:flex;flex-direction:column;overflow:hidden}
 #d0007-root *{box-sizing:border-box}
@@ -776,10 +802,12 @@
 #d0007-root footer{font-size:11.5px;color:#7a877c;padding:6px 16px;border-top:1px solid #dfe5e0;background:#fff}
 #d0007-launch{position:fixed;right:16px;bottom:16px;z-index:2147482000;background:#1f4d2b;color:#fff;border:0;border-radius:999px;padding:10px 16px;font:600 13px -apple-system,"Segoe UI",Roboto,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer}
 `;
-  // Screens append their own css here so they don't have to edit this file.
+  // Screens push their own css onto this so they dont have to edit this file.
   const CSS_PARTS = [CSS];
 
   // --- ui -------------------------------------------------------------
+  // No framework. innerHTML + template strings + esc() on anything that came
+  // from VMS, then bind events after. Its a userscript, not a startup.
   const state = { tab: 'events', evSet: 'upcoming', openEvent: null, hoursWin: '', hoursBy: 'volunteer', q: '', certFilter: 'all', sort: {}, rosterSel: null };
   let root = null, main = null;
 
@@ -799,8 +827,9 @@
   }
   const matches = (q, ...fields) => !q || fields.some(f => norm(f).includes(norm(q)));
 
-  // Each render gets a ticket; a slow tab that finishes after you've already
-  // switched away must not paint over the new one.
+  // Each render gets a ticket. A slow tab that finishes loading after you've
+  // already clicked somewhere else must not paint over the new one (it did,
+  // once, and it was confusing as hell).
   let renderTicket = 0;
   function render() {
     const ticket = ++renderTicket;
@@ -809,11 +838,14 @@
     const tab = TABS.find(t => t.id === state.tab) || TABS[0];
     Promise.resolve().then(() => tab.render()).catch(e => { if (ticket === renderTicket) main.innerHTML = `<div class="wrap"><div class="err"><b>Couldn't load data.</b> ${esc(e.message || e)}</div></div>`; });
   }
-  // Screens call this before writing to main after an await: if it returns
-  // false the user has moved on and the screen should just stop.
+  // Screens call this before touching main after an await - if it comes back
+  // false the person has moved on and the screen should just stop.
   const stillCurrent = tabId => state.tab === tabId;
 
   // ---- Events ----
+  // The home page already works out "N volunteers still needed" per event card.
+  // What it doesnt do is show that across all your events on one screen, which
+  // is the single most useful number in the entire system. So, this.
   async function renderEvents() {
     const [ev, up] = await Promise.all([VMS.groupEvents(), VMS.upcomingEngagements().catch(() => [])]);
     if (!stillCurrent('events')) return;
@@ -877,8 +909,8 @@
         ${d.shifts.length ? `<div class="bar" style="margin-top:12px"><b>Reported shifts (${d.shifts.length})</b></div><div class="tbl"><table><thead><tr><th>Volunteer</th><th>Start</th><th class="n">Hours</th><th>Status</th></tr></thead><tbody>
           ${d.shifts.map(s => `<tr><td>${esc(s.name)}</td><td>${esc(fmtDT(s.start))}</td><td class="n">${s.hours || ''}</td><td>${statusPill(s.status)}${/pending/i.test(s.status) ? ` <button class="btn ap-go" data-approve="${esc(title)}" title="Open this event's pending shifts on the Hours tab">Approve…</button>` : ''}</td></tr>`).join('')}
         </tbody></table></div>` : ''}`;
-      // Pending rows jump to the Hours tab filtered to this event, so approvals
-      // can be done event by event from here.
+      // Pending rows jump to the Hours tab filtered to this event so you can
+      // approve an event right after looking at who was actually on it.
       box.querySelectorAll('[data-approve]').forEach(b => b.addEventListener('click', () => { state.pendingSearch = b.dataset.approve; state.tab = 'hours'; state.q = ''; render(); }));
     } catch (e) { box.innerHTML = `<div class="err">${esc(e.message || e)}</div>`; }
   }
@@ -886,9 +918,13 @@
   TABS.push({ id: 'events', label: 'Events', render: renderEvents });
 
   // ---- Roster ----
-  // "MFR" here means VMS has a current Medical First Responder certification on
-  // file for the person (any of the MFR qualification names). It's the same
-  // test the Schedule tab falls back on when a booking's shift type is unknown.
+  // The volunteers page in the portal is a 10-row paginated table with a csv
+  // button. This is the csv, on screen, searchable, with hours and certs a
+  // click away. Revolutionary stuff.
+  //
+  // "MFR" here means VMS has a current Medical First Responder cert on file for
+  // the person (any of the MFR qualification names). Same test the Schedule tab
+  // falls back on when it cant tell which shift someone booked.
   function mfrCertOf(name, certs) {
     const mine = certs.filter(c => norm(c.name) === norm(name) && /medical first responder/i.test(c.qualification) && c.expiry && daysUntil(c.expiry) >= 0);
     return mine.sort((a, b) => (toDate(b.expiry)?.getTime() || 0) - (toDate(a.expiry)?.getTime() || 0))[0] || null;
@@ -932,21 +968,21 @@
   D.mfrCertOf = mfrCertOf;
 
   // ---- Hours ----
-  // Two things on this tab. The top is the pending-approval queue, which is
-  // the one place this script writes to VMS (the mechanics are in
-  // 22-approve.js). Below it, collapsed, is the hours report that used to be
-  // the whole tab.
+  // Two things here. Top is the pending approval queue, the one place this
+  // script writes to VMS (mechanics in 22-approve.js). Under it, collapsed, is
+  // the hours report that used to be this whole tab.
   //
-  // Nothing is written until the person presses Submit, reads the list of
-  // exactly what will change, and presses Confirm. Each row's start/end/hours
-  // come from the shift's own approval form (read when the row is first
-  // touched), not from the list page, so what's shown is what gets sent.
+  // Nothing gets written until you press Submit, read the list of exactly
+  // whats going to change, and press Confirm. Each rows start/end/hours come
+  // from the shifts own approval form (read when you first touch the row), not
+  // from the list page, so what you see is what gets sent. I've been burned by
+  // the list page rounding before.
   const AP = { list: null, total: 0, truncated: false, progress: '', error: null, rows: new Map(), closed: new Set(), confirm: null, running: null, lastRun: null, reportOpen: false, loadToken: 0, evHours: {}, reportRows: [] };
   const AP_STATUSES = [[Approvals.STATUS.APPROVED, 'Approve'], [Approvals.STATUS.NO_SHOW, 'No show'], [Approvals.STATUS.CANCELLED, 'Cancel'], [Approvals.STATUS.PENDING, 'Leave pending']];
   const AP_SPIN = ' <span class="ap-spin" title="Reading the shift from VMS…"></span>';
 
   const apRow = item => ({ id: item.shiftId, item, form: null, formLoading: false, formError: null, formPromise: null, sel: false, status: Approvals.STATUS.APPROVED, edits: {}, timesOpen: false, result: null });
-  // Until the form has been read, the list page's start and hours stand in.
+  // Until the form has been read the list pages start and hours stand in.
   const apBase = r => r.form || { start: r.item.start, end: r.item.start ? new Date(r.item.start.getTime() + r.item.hours * 3600000) : null, hours: r.item.hours, status: Approvals.STATUS.PENDING };
   function apView(r) { try { return { v: Approvals.plan(apBase(r), { ...r.edits, status: r.status }), err: null }; } catch (e) { return { v: null, err: e.message || String(e) }; } }
   const apShown = r => { const { v, err } = apView(r); const b = apBase(r); return { start: v ? v.start : (r.edits.start || b.start), end: v ? v.end : (r.edits.end || b.end), hours: v ? v.hours : (r.edits.hours ?? b.hours), err }; };
@@ -960,15 +996,15 @@
   const apSelected = () => [...AP.rows.values()].filter(r => r.sel);
   const apBusy = () => !!(AP.confirm || AP.running);
 
-  // Entry from the tab bar or Refresh: start over.
+  // Entry from the tab bar or Refresh - start over (unless a batch is running).
   async function renderHours() {
     if (AP.running) { await paintHours(); return; }   // a batch is mid-flight; just show it
     Object.assign(AP, { list: null, error: null, confirm: null, running: null, rows: new Map(), progress: '' });
     await apLoad();
   }
-  // keepRows keeps selections, edits and results for shifts still pending
-  // (used after a run and by Reload); quiet leaves the current list on screen
-  // while the new one comes in.
+  // keepRows keeps your selections, edits and results for shifts still pending
+  // (used after a run and by Reload). quiet leaves the current list on screen
+  // while the new one comes in instead of flashing a spinner at you.
   async function apLoad({ keepRows = false, quiet = false } = {}) {
     const token = ++AP.loadToken;
     const prev = AP.rows;
@@ -991,6 +1027,8 @@
   }
 
   // --- the shift form, read lazily, three at a time ---
+  // Each one is a ~60KB page for four numbers. Three at a time keeps the
+  // portal from getting grumpy.
   const apQueue = []; let apInFlight = 0;
   function apPump() { while (apInFlight < 3 && apQueue.length) { apInFlight++; apQueue.shift()().finally(() => { apInFlight--; apPump(); }); } }
   function apEnsureForm(r) {
@@ -1109,7 +1147,8 @@
       <ul class="plain">${l.done.map(d => `<li><span class="ap-ok">✓</span><span>${apChangeLine(d.name, d.event, d.values, null)}</span></li>`).join('')}${l.failed.map(f => `<li><span class="ap-bad">✗</span><span>${esc(f.name)} — ${esc(f.event)}</span><span class="pill red">${esc(f.error)}</span></li>`).join('')}</ul></div>`;
   }
 
-  // In-place updates so typing in one row doesn't repaint the screen.
+  // In-place updates so typing in one row doesnt repaint the whole screen and
+  // throw your cursor away.
   function apRowDom(r, { keepHours = false } = {}) {
     if (AP.rows.get(r.id) !== r) return;   // an older copy of this row (a reload happened); its DOM isn't ours
     const tr = main && main.querySelector(`tr.ap-row[data-id="${r.id}"]`); if (!tr) return;
@@ -1177,13 +1216,14 @@
     });
   }
 
-  // --- submit → confirm → run ---
+  // --- submit -> confirm -> run ---
+  // Yes, two steps. Its 143 peoples hours.
   async function apBeginConfirm() {
     const sel = apSelected(); if (!sel.length || apBusy()) return;
     AP.confirm = { loading: true, items: [] };
     await paintHours();
-    // Always read the forms again here: the panel must describe VMS as it is
-    // now, not as it was when the row was first clicked.
+    // Always re-read the forms here. The panel has to describe VMS as it is
+    // right now, not as it was when you first clicked the row ten minutes ago.
     sel.forEach(r => { r.form = null; r.formError = null; });
     await Promise.all(sel.map(apEnsureForm));
     if (!AP.confirm || !AP.confirm.loading) return;   // cancelled meanwhile
@@ -1216,7 +1256,7 @@
     });
     AP.running = null;
     AP.lastRun = { at: new Date(), done: res.done.map(d => ({ name: d.row.item.name, event: d.row.item.event, values: d.values })), failed: res.failed.map(f => ({ name: f.row.item.name, event: f.row.item.event, error: f.error })) };
-    // Done ones leave the queue now; the reload below is the real check.
+    // Done ones leave the queue now, the reload below is the real check.
     for (const d of res.done) AP.rows.delete(d.shiftId);
     AP.list = AP.list.filter(it => AP.rows.has(it.shiftId));
     for (const f of res.failed) { const r = AP.rows.get(f.shiftId); if (r) { r.sel = true; r.form = null; } }   // re-read the form before any retry
@@ -1225,6 +1265,8 @@
   }
 
   // --- the hours report (unchanged, just folded under a toggle) ---
+  // Reports > Volunteer Hours in the portal is 10 rows a page with no totals.
+  // This adds the totals. Thats it. Thats the feature.
   async function hoursReportHTML() {
     const hrs = await VMS.hours(state.hoursWin);
     const q = state.q;
@@ -1315,6 +1357,11 @@
   TABS.push({ id: 'hours', label: 'Hours', render: renderHours });
 
   // ---- Certifications ----
+  // For a first response unit this is the one that matters - someone with a
+  // lapsed MFR cert cant deploy, full stop. VMS has no "show me everyones
+  // current certs" view anywhere. It has five windowed reports with labels that
+  // dont match what they do (see 20-vms.js). This pulls all five and flags
+  // whats expired, whats about to, and whats fine.
   function certState(expiry) { if (!expiry) return 'none'; const d = daysUntil(expiry); if (d === null) return 'none'; return d < 0 ? 'expired' : d <= CERT_WARN_DAYS ? 'expiring' : 'current'; }
   function certPill(expiry) { const s = certState(expiry); const d = daysUntil(expiry); return s === 'expired' ? pill(`Expired ${fmtD(expiry)}`, 'red') : s === 'expiring' ? pill(`Expires in ${d} d`, 'amber') : s === 'current' ? pill(`Valid to ${fmtD(expiry)}`, 'green') : pill('No expiry', 'grey'); }
   async function renderCerts() {
@@ -1348,6 +1395,8 @@
   }
 
   // --- shell ------------------------------------------------------------
+  // Full screen overlay on top of the portal page. Esc or Close puts the
+  // portal back exactly as it was.
   function addStyles() { if (!document.getElementById('d0007-css')) document.head.appendChild(el('style', { id: 'd0007-css' }, CSS_PARTS.join('\n'))); }
   function open() {
     if (root) { root.style.display = 'flex'; return; }
@@ -1369,10 +1418,11 @@
 
   W.D0007 = Object.assign({ open, close, render, state, version: '0.2.0' }, D);
 
-  // Floating launcher button. Skip it inside iframes (the portal loads entity
-  // forms in modals and the script would run there too). Styles go in first -
-  // v0.1.1 only added them when the console opened, which left this button
-  // unstyled at the bottom of the page. Thanks, Safari, for making me notice.
+  // Floating launcher button. Skip it inside iframes (the portal loads its
+  // entity forms in modal iframes and the script would run in there too).
+  // Styles go in first - 0.1.1 only added them when the console opened, so on
+  // Safari the button was a plain grey <button> at the very bottom of the page
+  // and I spent twenty minutes thinking Teampermonkey wasnt running at all.
   if (window.top === window.self && document.body) {
     addStyles();
     const b = el('button', { id: 'd0007-launch', type: 'button', title: APP_TITLE }, 'VMS');
@@ -1380,8 +1430,8 @@
     document.body.appendChild(b);
     if (location.hash === '#d0007') open();
   }
-  // Second way in, from the Tampermonkey icon menu, in case the button is ever
-  // hidden by something on the page.
+  // Second way in, from the Tampermonkey icon menu, for when the button is
+  // hidden behind something or I've broken the css again.
   if (typeof GM_registerMenuCommand === 'function') {
     try { GM_registerMenuCommand("Open Cam's VMS Console", open); } catch (e) { }
   }

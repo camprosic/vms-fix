@@ -1,4 +1,9 @@
   // ---- Certifications ----
+  // For a first response unit this is the one that matters - someone with a
+  // lapsed MFR cert cant deploy, full stop. VMS has no "show me everyones
+  // current certs" view anywhere. It has five windowed reports with labels that
+  // dont match what they do (see 20-vms.js). This pulls all five and flags
+  // whats expired, whats about to, and whats fine.
   function certState(expiry) { if (!expiry) return 'none'; const d = daysUntil(expiry); if (d === null) return 'none'; return d < 0 ? 'expired' : d <= CERT_WARN_DAYS ? 'expiring' : 'current'; }
   function certPill(expiry) { const s = certState(expiry); const d = daysUntil(expiry); return s === 'expired' ? pill(`Expired ${fmtD(expiry)}`, 'red') : s === 'expiring' ? pill(`Expires in ${d} d`, 'amber') : s === 'current' ? pill(`Valid to ${fmtD(expiry)}`, 'green') : pill('No expiry', 'grey'); }
   async function renderCerts() {
