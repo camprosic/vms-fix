@@ -1,5 +1,7 @@
 # vms-fix
 
+The result of a 4-year undergraduate coding experiments in javascript trying to make it useful for a real-world application. Use at your own risk ;)
+
 A Tampermonkey userscript that puts an actually useful frontend on the national VMS portal. It runs on the portal page
 as whoever is signed in, so it only ever shows what that person's VMS role already lets them see. The one thing it
 writes is shift approvals on the Hours tab, through the same approval form the portal uses, after you've confirmed the
