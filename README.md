@@ -30,11 +30,10 @@ Chrome 138+ note: if Tampermonkey complains that userscripts are blocked, turn o
 | Tab | Shows | Source |
 |---|---|---|
 | Events | Upcoming / current / past / ad hoc events for the group with date, location, status, required quals and a staffing bar (signed up vs minimum, "N still needed"). "Who's on it" expands the sign-up list and reported shifts. | Group Lead > Events subgrids, `get-engagements`, event-summary subgrids |
-| Schedule | The monthly event schedule in the same 12-column layout as the unit's spreadsheet: one row per event day, meet/end times from the day's main shift, names split into MFR / Apprentice with C / D / Sr tags, other-unit labels and `*` partial-shift markers (with the matching `**16:30 to End` note), plus the unit-side columns VMS doesn't have (Meet @ St.John, coordinator, notes, requirement, equipment, vehicle, row colour) editable in place. Copy the month as spreadsheet rows, download it as .xlsx, or print it. | Events + event-summary subgrids, `Store` for the unit-side columns |
-| Roster | All group members with email, phone, status, contact id and effective schedule role. Search. Click a member for their 12-month hours and certs, and to set their schedule tags (MFR/Apprentice, C/D/Sr, unit). CSV download. | `volunteers-by-group-csv-feed`, `Store` for tags |
+| Schedule | The month's events in the same layout as the unit's event-schedule spreadsheet, built only from what VMS holds: one row per event day; the VMS shift start as "Meet @ St.John" and the shift end as "Approx. End"; each shift definition with booked/max; location and street address; the organizer's on-site contact (phone, email) when VMS still shows it; who's booked, split into Medical First Responders and Apprentice by the shift they booked, with `*` partial-shift markers; required qualifications. Copy the month as spreadsheet rows (the sheet's 12 columns, VMS-less ones left blank), download it as .xlsx, or print it. | Events + event-summary subgrids, the public event page, the web api address columns, the pending-request form |
+| Roster | All group members with email, phone, status, contact id and whether VMS has a current Medical First Responder certification on file. Search. Click a member for their 12-month hours and certs. CSV download. | `volunteers-by-group-csv-feed`, `qualifications-gained-csv-feed` |
 | Hours | **Pending approvals**: every reported shift waiting on a group lead, grouped by event, with hours / status / times editable per row or per event, a confirmation list, and a per-shift result. Below it (collapsed), completed vs pending hours by volunteer or by event, 12 months / 90 days / 30 days. Sortable. CSV download. | Group Lead → Hours page, the shift approval entity form, `participation-reports-csv-feed` |
 | Certifications | Every cert VMS will report, flagged Expired / Expiring in 90 days / Current / No expiry. Filter by status, member or qualification. CSV download. | `qualifications-gained-csv-feed` + `verified-qualifications-csv-feed` |
-| Data | Export / import / reset the unit-side data (schedule edits, member tags) as a JSON file so it can be passed between people. | localStorage |
 
 ## How it gets the data
 
@@ -60,16 +59,34 @@ Results are cached in memory until you hit Refresh.
 
 ## The event schedule
 
-VMS knows the event, where it is, who booked which shift and when. The spreadsheet the unit actually runs on adds
-things VMS has no field for: when to meet at the branch, who's coordinating on site, kit and vehicle numbers, the
-staffing requirement, and who's Command / Driver / Sr versus Apprentice. The Schedule tab derives everything it can
-from VMS (one row per event day, the main shift window, who's on it, who's on a partial shift) and stores the rest in
-the browser's localStorage under `camsvms.v1`. That means edits live on the machine where you made them - use the Data
-tab to export them as a file and import on another one. Roles default to Apprentice unless VMS has a current Medical
-First Responder certification on file for the person; override per member from the Roster tab.
+The unit runs on a monthly spreadsheet (Event / Date / Meet @ St.John / Meet @ Event / Approx. End / Location /
+On-Site Coordinator / Event Notes / Medical First Responders / Apprentice / Equipment / Vehicle). The Schedule tab
+shows everything VMS can contribute to that, in that shape, so the person keeping the sheet can lift it across in one
+go. It does not store or invent anything: the columns VMS has nothing for (Meet @ Event, equipment, vehicle, the
+notes) are left blank in the export for the volunteer to fill in.
 
-Rows are keyed by event id and date, so they survive VMS renaming or re-timing the event. Past events older than
-about six weeks aren't opened (that's one page read per event), so the month view is forward-looking by design.
+Where each column comes from:
+
+- Rows are one per event day. Days come from the event's shift definitions on the public event page
+  (`/engagement/?id=<public id>`), whose rows carry the shift name, start, end, max and booked counts.
+- **Meet @ St.John** is the earliest shift start that day (that's how the unit uses it); **Approx. End** the latest shift end.
+- **Location** is the event's location name plus the street address from `/_api/msnfp_engagementopportunities` (one of
+  the few columns the web api still exposes).
+- **On-Site Coordinator** comes from the event *request* form (`/group-lead/event-general/?id=…`), which carries the
+  organizer and an on-site contact with phone and email. VMS only lists requests while they're waiting for the group
+  lead's approval, so for an already-approved event the column says so instead. (That's a VMS gap worth raising with
+  national: the one phone number you need on the day is hidden once the event is approved.)
+- **Medical First Responders / Apprentice** are the people booked on that day, split by the shift they booked
+  ("MFR" or "Apprentice" — every D0007 event defines exactly those two). The booked shift is only visible through the
+  booking's approval form, so the tab first splits by whether VMS has a current MFR certification for the person,
+  compares those counts with the shifts' booked counts, and only reads the forms for days where they disagree.
+  Someone whose booked window differs from the shift gets a `*` and a "**16:30 to End" note, like the sheet.
+
+## Known limits (schedule)
+
+- Past events older than about six weeks aren't opened (one page read per event).
+- Reading booked shift types is one request per booking; a month with a big multi-day fair can take a minute the
+  first time. Results are kept for the session.
 
 ## Approving hours
 
@@ -99,7 +116,6 @@ runs on, so they're much less likely to be switched off.
 
 ## Known limits
 
-- Schedule edits and member tags are per browser (localStorage). Export from the Data tab before clearing site data or switching machines.
 - Certs gained more than two years ago that expire after next year don't show up in any VMS report window.
 - Past events list is capped at the 200 most recent.
 - Members are matched across feeds by name (the csv feeds don't carry contact ids consistently), so a renamed or
