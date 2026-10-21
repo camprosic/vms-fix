@@ -24,3 +24,5 @@ Everything lives inside one IIFE, so a `const` declared in an earlier file is vi
 - Members are matched across feeds by name (`norm(name)`), because the feeds don't carry ids consistently.
 - Reads are cached in `VMS` until Refresh. Anything that writes to VMS must `VMS.clear()` the affected caches afterwards and must be explicit in the UI about what it is about to change.
 - Keep the mocked portal in `test/run.js` in step with any new VMS route you add, and add a `test/*.test.js` for new modules. `npm test` builds and runs.
+
+Thanks to GitHub copilot for making my mess legible for future devs :) -cp
