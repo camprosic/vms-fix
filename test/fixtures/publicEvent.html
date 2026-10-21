@@ -1,0 +1,1735 @@
+
+
+
+	
+		
+
+			
+	
+		
+
+	<div id="offlineNotificationBar" class="displayNone">
+		<img alt="web" id="web" onerror="javascript: var target = event.target; var img = document.createElement('img'); img.src = '/css/images/web.png'; img.alt = 'web'; img.id = 'web' ; target.insertAdjacentElement('afterend',img); target.remove();" src="https://content.powerapps.com/resource/powerappsportal/img/web.png">
+		<div id="message">You’re offline. This is a read only version of the page.</div>
+		<div id="close" onclick="this.parentElement.style.display='none';"><img alt="close" onerror="javascript: var target = event.target; var img = document.createElement('img'); img.src = '/css/images/close.png'; img.alt = 'close'; img.id = '' ; target.insertAdjacentElement('afterend',img); target.remove();" src="https://content.powerapps.com/resource/powerappsportal/img/close.png"></div>
+	</div>
+
+	
+
+	<script type="text/javascript">
+        window.DisableCkEditor = window.DisableCkEditor || {};
+		
+		DisableCkEditor.Value = 'False';
+    </script>
+
+	<script type="text/javascript">
+        var enableOmniChannelWidgetWithSiteCopilot = 'False';
+        if (enableOmniChannelWidgetWithSiteCopilot === "True" || enableOmniChannelWidgetWithSiteCopilot === "true") {
+            const authUrl = window.location.origin + "/_services/auth/portalusertoken";
+            const fetchWithRetries = async (url, options, retries) => {
+                try {
+                    const authResponse = await fetch(url, options);
+                    const token = await authResponse.text();
+                    sessionStorage['c2Token'] = token;
+                } catch (err) {
+                    if (retries === 1) throw err;
+                    return await fetchWithRetries(url, options, retries - 1);
+                }
+            };
+            fetchWithRetries(authUrl, { method: "POST" }, 4);
+
+            // Enable/disable Omnichannel session refresh on auth state change
+            // When enabled, closeChat() is called when user logs in/out to start a fresh session
+            var enableOmniChannelSessionRefreshSetting = 'True';
+            window.enableOmniChannelSessionRefresh = enableOmniChannelSessionRefreshSetting === 'True' || enableOmniChannelSessionRefreshSetting === 'true';
+        }
+    </script>
+
+	<script type="text/javascript">
+		var isPvaBotAuthenticated = sessionStorage['isPvaBotAuthenticated'];
+		var isPortalUserLoggedIn = 'True';
+
+        if ((isPvaBotAuthenticated != null || isPvaBotAuthenticated != undefined) && isPvaBotAuthenticated != isPortalUserLoggedIn) {
+			sessionStorage['triggerPvaBotSignOut'] = true;
+			sessionStorage.removeItem('c2Token');
+            sessionStorage.removeItem('directLinetoken');
+            sessionStorage.removeItem('conversation_Id');
+
+			sessionStorage.removeItem('bot_c2Token');
+			sessionStorage.removeItem('botdirectLinetoken');
+            sessionStorage.removeItem('botconversation_Id');
+		}
+		sessionStorage['isPvaBotAuthenticated'] = isPortalUserLoggedIn;
+    </script>
+
+	<script type="text/javascript">
+		window["CSPSettings"] = window["CSPSettings"] || {};
+		window["CSPSettings"].nonce = '';
+        window["FabricConfig"] = window["FabricConfig"] || {};
+        window["FabricConfig"].mergeStyles = window["FabricConfig"].mergeStyles || {};
+		window["FabricConfig"].mergeStyles.cspSettings = window["CSPSettings"];
+        window["Microsoft"] = window["Microsoft"] || {};
+		window["Microsoft"].Dynamic365 = {
+			Portal: {
+				
+				User: {
+					userName: 'test@example.com',
+					firstName: 'Cameron',
+					lastName: 'Prosic',
+					email: 'test@example.com',
+					contactId: '76540ccb-5093-e811-943c-cea792b29830',
+					userRoles: [],
+				},
+				
+				type: 'CDSStarterPortal',
+				id: 'ace34207-bb4f-465c-a3e2-686549dd31c9', 
+				geo: 'CAN', 
+				tenant: '4eb3d202-86fa-4a81-b4de-47e3389ef4d0', 
+				correlationId: 'c5b423f7-3617-471e-9131-a9f28978f1fd',
+                orgEnvironmentId: 'e68555d5-5017-451d-b1c6-b180bc439504',
+                orgId: 'b58d5c5b-0547-45c9-b23e-4495c6e5f20e',
+                portalProductionOrTrialType: 'Production',
+                isTelemetryEnabled: 'True',
+                InstrumentationSettings: {
+                    instrumentationKey: '197418c5cb8c4426b201f9db2e87b555-01008-2790-49b0-9295-51f43b6204b1-7172',
+                    collectorEndpoint: 'https://us-mobile.events.data.microsoft.com/OneCollector/1.0/'
+                },
+                timerProfileForBatching: 'NEAR_REAL_TIME',
+                activeLanguages: ["en-US","fr-FR"],
+                isClientApiEnabled: 'True',
+                isSpaSite: 'False'
+            }
+        };
+
+		window["Microsoft"].PowerPages = window["Microsoft"].PowerPages || {};
+		window["Microsoft"].PowerPages.onPagesClientApiReady = (callback) => {
+			return new Promise((resolve, reject) => {
+				let isComplete = false;
+				let timeoutId;
+				const timeoutInterval = 10000;
+		
+				function handleReady() {
+					if (!isComplete && window.$pages) {
+						isComplete = true;
+						clearTimeout(timeoutId);
+						try {
+							if (typeof callback === "function") {
+								callback(window.$pages);
+							}
+						} catch (e) {
+							console.error("onPagesClientApiReady callback error:", e);
+						}
+						resolve(window.$pages); // should we reject if callback throws an error
+					}
+				}
+		
+				if (window.$pages) {
+					handleReady();
+					return;
+				}
+		
+				function sdkListener() {
+					handleReady();
+					window.removeEventListener('pagesSDKInitialized', sdkListener);
+				}
+		
+				window.addEventListener('pagesSDKInitialized', sdkListener);
+		
+				timeoutId = setTimeout(() => {
+					if (!isComplete) {
+						window.removeEventListener('pagesSDKInitialized', sdkListener);
+						if (window.$pages) {
+							handleReady();
+						} else {
+							isComplete = true;
+							reject(new Error('window.$pages not available.'));
+						}
+					}
+				}, timeoutInterval);
+			});
+		};
+
+		// Deprecated alias: Microsoft.Dynamic365.Portal.onPagesClientApiReady.
+		// Remove once telemetry shows no callers remain.
+		(function () {
+			var _impl = window["Microsoft"].PowerPages.onPagesClientApiReady;
+			var _logged = false;
+
+			window["Microsoft"].Dynamic365.Portal.onPagesClientApiReady = function (callback) {
+				if (!_logged) {
+					_logged = true;
+					try {
+						if (window.clientLogWrapper && typeof window.clientLogWrapper.traceWarning === "function") {
+							window.clientLogWrapper.traceWarning(
+								"Microsoft.Dynamic365.Portal.onPagesClientApiReady invoked (deprecated)",
+								"DeprecatedApi",
+								"ClientApiReady",
+								"Invoke",
+								"DeprecationTracker"
+							);
+						}
+						if (typeof console !== "undefined" && console.warn) {
+							console.warn(
+								"[DEPRECATED] Microsoft.Dynamic365.Portal.onPagesClientApiReady is deprecated " +
+								"and will be removed in a future release. Use Microsoft.PowerPages.onPagesClientApiReady instead."
+							);
+						}
+					} catch (_) { /* never break the caller */ }
+				}
+
+				return _impl(callback);
+			};
+		})();
+
+        // Mark request not cacheable if Dynamics365PortalAnalytics cookie is being refreshed by the server or if the cookie in request header is invalid
+		
+
+        // For client side telemetry intializing Dynamics365PortalAnalytics cookie object
+		
+        window["Microsoft"].Dynamic365.Portal.dynamics365PortalAnalytics = 'kXxqFicX-asIir4-3VoqANrPi3FJ99PaRuRLkp4LF-1RAWJoP_n0eow6eSnIcpPmMflD3x4vHl8fdTCt4IyaJfaoova3c-Deop-jO8xCmk4o53Da9TYjDuxzyuOVGX1iAMuWZhGxafGal6rZVZfOgA2'; // CodeQL [SM00430] False Positive: only alphanumeric chars allowed, for non-alphanumeric char it will return INVALID_CHARACTERS_IN_COOKIE 
+		
+
+	</script>
+	
+	<script type="text/javascript">
+
+		
+    </script>
+
+	
+		
+
+
+<script>
+
+
+function SaveCookie(cookieName, cookieValue) {
+  $.cookie(cookieName, cookieValue);
+}
+
+function RetrieveCookie(cookieName) {
+  return $.cookie(cookieName); 
+}
+
+function getUrlVars()
+{
+    var vars = [], hash;
+    var hashes = window.location.href.slice(window.location.href.indexOf('?') + 1).split('&');
+    for(var i = 0; i < hashes.length; i++)
+    {
+        hash = hashes[i].split('=');
+        vars.push(hash[0]);
+        vars[hash[0]] = hash[1];
+    }
+    return vars;
+}
+
+function updateQueryStringParameter(uri, key, value) {
+  if(!uri) return "";
+  var separator = uri.indexOf('?') !== -1 ? "&" : "?";
+  var re = new RegExp("([?&])" + key + "=.*?(&|$)", "i");
+  if (uri.match(re)) {
+    return uri.replace(re, '$1' + key + "=" + value + '$2');
+  }
+  else {
+    return uri + separator + key + "=" + value;
+  }
+    }
+
+function formatDateTimePickers(){
+   $("input[data-ui=datetimepicker]").each(function(index,value){$(this).next().data("DateTimePicker").keepOpen(true)});
+   //$("input[data-ui=datetimepicker]").each(function(index,value){$(this).next().data("DateTimePicker").sideBySide(true)});
+   $("input[data-ui=datetimepicker]").each(function(index,value){$(this).next().data("DateTimePicker").showClose(true)});
+}
+
+function addLinksToSignInLinkList(){
+  var results = document.getElementsByClassName("nav nav-tabs nav-account");
+  if(results && results[0] ){
+    var signInLinkList = results[0];
+    var links = []
+    links.push('<a role="tab" aria-selected="false" href="/volunteer-application" aria-label="Apply to Volunteer" title="Apply to Volunteer" tabindex="-1">Apply to Volunteer</a>');
+    links.push('<a role="tab" aria-selected="false" href="/event-request" aria-label="Request our Services" title="Request our Services" tabindex="-1">Request our Services</a>');
+    for(x = 0; x < links.length; x++){
+      var li = document.createElement("li");
+      li.setAttribute("role", "none");
+      li.innerHTML = links[x];
+      signInLinkList.appendChild(li);
+    }
+  }
+}
+
+function updateExternalLoginText(){
+  var results = $(".btn.btn-primary.btn-line[id*='b2clogin']");
+  if(results && results[0]){
+    //console.debug(results[0]);
+    var adb2cButton = results[0];
+    $(adb2cButton).html("Continue");
+    }
+
+  var results2= $(".btn.btn-primary.btn-line[value*='b2clogin']");
+  if(results2 && results2[0]){
+    //console.debug(results2[0]);
+    var adb2cButton2 = results2[0];
+    $(adb2cButton2).html("Continue");
+    }
+  }
+
+function removeExternalLoginText(){
+  var externalLoginSection = $("#ContentContainer_MainContent_MainContent_RegisterExternalLabel").closest("h1");
+  externalLoginSection.hide();
+}
+
+function trackCurrentPageInSignInInfo(){
+  //debugger;
+  
+  var instanceId = '3666eec51755029e95841e4cad76b639868f03fb2c9e42e8d4970cd42b2a34ea';
+  var ipAddress = '174.91.120.52:64642'.split(":")[0];
+  var page = 'https://volunteer-sja.powerappsportals.com/en-US/engagement/?id=0f51048a-6e24-f111-88b3-70a8a50be077';
+  var name = (page + " : " + instanceId + " : " + ipAddress).substr(0,800);
+  
+  if(page.toLocaleLowerCase().indexOf("signin") != -1 || page.toLocaleLowerCase().indexOf("register") != -1){
+    webapi.safeAjax({
+      type: "Post",
+      url: "/_api/sjavms_signininfos",
+      contentType: "application/json",
+      data: JSON.stringify({
+        sjavms_instanceid: instanceId,
+        sjavms_ipaddress: ipAddress,
+        sjavms_page: page,
+        sjavms_name: name
+      }),
+    })
+  }
+}
+
+function lookupEnhancements(){
+  //$("input[type=text].lookup").attr("title", "Please click the magnifying glass icon on the right to open this lookup.");
+  //$("input[type=text].lookup").click(function(){alert('t')});
+
+  var lookups = $("input[type=text].lookup");
+  lookups.each(function (index, value){
+      var button = $(this).parents("div.input-group").find("button.launchentitylookup");
+      $(this).click(function(){button.click();});
+  });
+}
+
+function convertTZ(date, tzString) {
+    return new Date((typeof date === "string" ? new Date(date) : date).toLocaleString("en-US", {timeZone: tzString}));   
+}
+
+function addLeadingZeros(n) {
+  if (n <= 9) {
+    return "0" + n;
+  }
+  return n
+}
+
+function getFormattedHours(dateObj){
+  var hours = dateObj.getHours();
+  if(hours > 12) hours = hours-12;
+  if(hours == 0) hours = 12;
+  return hours;
+}
+
+function getAMPM(dateObj){
+    var hours = dateObj.getHours();
+    if(hours >= 12) return "PM"
+    return "AM";
+}
+function formatDateForGrids(dateObj, includeTime){
+  var formattedDateString = dateObj.getFullYear() + "/" + addLeadingZeros(dateObj.getMonth()+1) + "/" + addLeadingZeros(dateObj.getDate());
+  if(includeTime){
+    formattedDateString += " " + getFormattedHours(dateObj) + ":" + addLeadingZeros(dateObj.getMinutes()) + " " + getAMPM(dateObj);
+  }
+  return(formattedDateString);
+  
+}
+
+function getAuditRecords(objectId, callbackFunction){
+    $.ajax({
+      url: '/_api/audits?$orderby=createdon desc&$filter= _objectid_value eq ' + objectId,
+      type: "GET",
+      contentType: 'application/json',
+      success: function(response) {
+        //auditRecords = response;
+        //return response;
+        callbackFunction(response.value);
+      },
+      error: function(e) {
+        alert(e.statusText);
+      }
+    });
+}
+
+function getLookupPimaryField(entityLogicalName, entityId)
+{
+  // first retrive the name of the Primary Field
+  // we can't retrieve the metadata for the entities at this point (not easily anyway),
+  // so we store the ones we need in a Site Setting
+  var primaryFieldAttributes ={ "contact":"fullname", "account":"name", "sjavms_eventrequest":"sjavms_name", "msnfp_workitem":"msnfp_name", "msnfp_group":"msnfp_groupname", "sjavms_branch":"sjavms_name", "msnfp_operation":"msnfp_name", "businessunit":"name", "msnfp_deliveryframework":"msnfp_name", "team":"name", "sjavms_program":"sjavms_name", "sjavms_vmscouncil":"sjavms_name", "transactioncurrency":"currencyname", "td_form":"td_name", "msnfp_engagementopportunity":"msnfp_engagementopportunity", "msnfp_groupmembership":"msnfp_groupmembershipname", "systemuser":"fullname" };
+  var entityPrimaryFieldName = primaryFieldAttributes[entityLogicalName];
+  var entityPluralName = getEntityPluralName(entityLogicalName);
+  var primaryFieldValue;
+  var url = '/_api/' + entityPluralName + '(' + entityId + ')?$select=' + entityPrimaryFieldName;
+  console.debug("url: " + url);
+    $.ajax({
+      url: url,
+      type: "GET",
+      contentType: 'application/json',
+      async: false,
+      success: function(response) {
+        console.log(response);
+        primaryFieldValue = response[entityPrimaryFieldName];
+        //return response[entityPrimaryFieldName];
+        //callbackFunction(response[entityPrimaryFieldName]);
+      },
+      error: function(e) {
+        //alert(e.statusText);
+        console.log(e);
+        //callbackFunction("");
+        primaryFieldValue = "";
+      }
+    });
+    return primaryFieldValue;
+}
+
+function getEntityPluralName(entityLogicalName){
+  if(entityLogicalName.endsWith("y")){
+    return entityLogicalName.slice(0, -1) + "ies";
+  }
+  if(entityLogicalName.endsWith("s")){
+    return entityLogicalName.slice(0, -1) + "es";
+  }
+  return entityLogicalName + "s";  
+}
+
+function formatPhoneNumber(elem, e){
+    var ph = elem.value.replace(/\D/g,'').substring(0,10);
+    // Backspace and Delete keys
+    var deleteKey = (e.keyCode == 8 || e.keyCode == 46);
+    var len = ph.length;
+    if(len==0){
+        ph=ph;
+    }else if(len<3){
+        ph='('+ph;
+    }else if(len==3){
+        ph = '('+ph + (deleteKey ? '' : ') ');
+    }else if(len<6){
+        ph='('+ph.substring(0,3)+') '+ph.substring(3,6);
+    }else if(len==6){
+        ph='('+ph.substring(0,3)+') '+ph.substring(3,6)+ (deleteKey ? '' : '-');
+    }else{
+        ph='('+ph.substring(0,3)+') '+ph.substring(3,6)+'-'+ph.substring(6,10);
+    }
+    elem.value = ph;
+}
+
+
+</script>
+
+
+
+  
+  <!--
+  --1
+  --
+  --Cameron Prosic - HAMILTON-WENTWORTH DIVISION (Unit Chief)
+  --cf450413-327a-ed11-81ad-0022486d6297
+  -->
+
+  
+
+    
+
+    
+    
+
+  
+
+
+
+
+<div id="floatingCirclesG">
+	<div class="f_circleG" id="frotateG_01"></div>
+	<div class="f_circleG" id="frotateG_02"></div>
+	<div class="f_circleG" id="frotateG_03"></div>
+	<div class="f_circleG" id="frotateG_04"></div>
+	<div class="f_circleG" id="frotateG_05"></div>
+	<div class="f_circleG" id="frotateG_06"></div>
+	<div class="f_circleG" id="frotateG_07"></div>
+	<div class="f_circleG" id="frotateG_08"></div>
+</div>
+
+
+
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+
+    /*** WebApi template code */
+        (function(webapi, $){
+            function safeAjax(ajaxOptions) {
+                var deferredAjax = $.Deferred();        
+                shell.getTokenDeferred().done(function (token) {
+                    // add headers for AJAX
+                    if (!ajaxOptions.headers) {
+                        $.extend(ajaxOptions, {
+                            headers: {
+                                "__RequestVerificationToken": token
+                            }
+                        }); 
+                    } else {
+                        ajaxOptions.headers["__RequestVerificationToken"] = token;
+                    }
+                    $.ajax(ajaxOptions)
+                        .done(function(data, textStatus, jqXHR) {
+                            validateLoginSession(data, textStatus, jqXHR, deferredAjax.resolve);
+                        }).fail(deferredAjax.reject); //AJAX
+                }).fail(function () {
+                    deferredAjax.rejectWith(this, arguments); // on token failure pass the token AJAX and args
+                });
+        
+                return deferredAjax.promise(); 
+            }
+            webapi.safeAjax = safeAjax;
+        })(window.webapi = window.webapi || {}, jQuery)
+    
+    addLinksToSignInLinkList();
+    removeExternalLoginText();
+    trackCurrentPageInSignInInfo();
+    lookupEnhancements();
+  });
+</script>
+
+<div class="navbar navbar-default navbar-static-top" role="navigation" style="min-height: 100px;background-color: #FFFFFF;">
+  <div class="skip-to-content"><a href="#mainContent">Skip to main content</a></div>
+  <div class="container">
+    <div class="navbar-header row">
+      <div class="col-xs-6">
+        <p class="navbar-brand">
+          <a class="homelink" href="~/" title="St. John Ambulance Home"><img height="80" src="http://volunteer-sja.powerappsportals.com/logo-en.png"></a>
+        </p>
+      </div>
+      <button type="button" class="navbar-toggle collapsed" title="Toggle navigation" data-toggle="collapse" data-target="#navbar" aria-expanded="false" onclick="setHeight();">
+        <span class="sr-only">Toggle navigation</span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      
+      
+        <div class="navbar-right menu-bar " data-weblinks-maxdepth="2">
+          <ul class="nav navbar-nav weblinks" role="menubar">
+            
+              
+                
+                  
+                
+
+                <li role="none" class="weblink ">
+                  <a role="menuitem" aria-label="Sign-Up for Events" href="/en-US/" title="Sign-Up for Events">
+                        Sign-Up for Events
+                  </a>
+
+                  
+                </li>
+
+              
+                
+                  
+                
+
+                <li role="none" class="weblink ">
+                  <a role="menuitem" aria-label="My Events" href="/en-US/my-engagements/" title="My Events">
+                          
+                        My Events
+                  </a>
+
+                  
+                </li>
+
+              
+            
+            
+            
+            
+              <li class="dropdown" role="none">
+                <a class="dropdown-toggle" href="#" data-toggle="dropdown" role="menuitem" aria-label="English" aria-haspopup="true" aria-expanded="false" title="English">
+                  <span class="drop_language">English</span>
+                  <span class="caret"></span>
+                </a>
+                <ul class="dropdown-menu" role="menu">
+  
+    <li role="menuitem">
+      <a href="/en-US/engagement/?id=0f51048a-6e24-f111-88b3-70a8a50be077" title="English" data-code="en-US">English</a>
+    </li>
+    
+    <li role="menuitem">
+      <a href="/fr-FR/engagement/?id=0f51048a-6e24-f111-88b3-70a8a50be077" title="Français" data-code="fr-FR">Français</a>
+    </li>
+    
+</ul>
+              </li>
+            
+            
+
+              
+              
+              
+              <li class="dropdown" role="none">
+              <a href="#" class="dropdown-toggle" title="Group Lead" data-toggle="dropdown" role="menuitem" aria-haspopup="true" aria-expanded="false">
+                    <span class="username">Group Lead</span>
+                    <span class="caret"></span>
+              </a>
+              <ul class="dropdown-menu" role="menu">
+              
+                
+                  <li role="none">
+                      <a role="menuitem" aria-label="Dashboard" href="/en-US/group-lead/dashboard/?groupid=cf450413-327a-ed11-81ad-0022486d6297" title="Dashboard">Dashboard</a>
+                  </li>
+                
+              
+                
+                  <li role="none">
+                      <a role="menuitem" aria-label="Events" href="/en-US/group-lead/events/?groupid=cf450413-327a-ed11-81ad-0022486d6297" title="Events">Events</a>
+                  </li>
+                
+              
+                
+                  <li role="none">
+                      <a role="menuitem" aria-label="Volunteers" href="/en-US/group-lead/volunteers/?groupid=cf450413-327a-ed11-81ad-0022486d6297" title="Volunteers">Volunteers</a>
+                  </li>
+                
+              
+                
+                  <li role="none">
+                      <a role="menuitem" aria-label="Hours" href="/en-US/group-lead/hours/?groupid=cf450413-327a-ed11-81ad-0022486d6297" title="Hours">Hours</a>
+                  </li>
+                
+              
+                
+                  <li role="none">
+                      <a role="menuitem" aria-label="Reports" href="/en-US/group-lead/participation-reports/?groupid=cf450413-327a-ed11-81ad-0022486d6297" title="Reports">Reports</a>
+                  </li>
+                
+              
+                
+                  <li role="none">
+                      <a role="menuitem" aria-label="Messages" href="/en-US/group-lead/group-messages/?groupid=cf450413-327a-ed11-81ad-0022486d6297" title="Messages">Messages</a>
+                  </li>
+                
+              
+              </ul>
+              </li>
+            
+
+
+              <li class="dropdown" role="none">
+                
+    <a href="#" class="dropdown-toggle" title="Cameron Prosic" data-toggle="dropdown" role="menuitem" aria-haspopup="true" aria-expanded="false">
+                    <span class="username">Cameron Prosic</span>
+     <span class="caret"></span>
+                </a>
+                <ul class="dropdown-menu" role="menu">
+                  
+                  
+                    
+                    
+                      
+                        <li role="none">
+                            <a role="menuitem" aria-label="Dashboard" href="/en-US/profile/dashboard/" title="Dashboard">Dashboard</a>
+                        </li>
+                      
+                        <li role="none">
+                            <a role="menuitem" aria-label="Profile" href="/en-US/profile/" title="Profile">Profile</a>
+                        </li>
+                      
+                        <li role="none">
+                            <a role="menuitem" aria-label="Events" href="/en-US/profile/profile-events/" title="Events">Events</a>
+                        </li>
+                      
+                        <li role="none">
+                            <a role="menuitem" aria-label="Hours and Availability" href="/en-US/profile/profile-availability/" title="Hours and Availability">Hours and Availability</a>
+                        </li>
+                      
+                        <li role="none">
+                            <a role="menuitem" aria-label="Skills and Qualifications" href="/en-US/profile/profile-prefandqual/" title="Skills and Qualifications">Skills and Qualifications</a>
+                        </li>
+                      
+                        <li role="none">
+                            <a role="menuitem" aria-label="Honours and Awards" href="/en-US/profile/profile-honours-and-awards/" title="Honours and Awards">Honours and Awards</a>
+                        </li>
+                      
+                        <li role="none">
+                            <a role="menuitem" aria-label="Documents" href="/en-US/profile/documents/" title="Documents">Documents</a>
+                        </li>
+                      
+                    
+                  
+                  <li class="divider" role="separator" aria-hidden="true"></li>
+                  <li role="none">
+                      <a role="menuitem" aria-label="Sign out" href="/en-US/Account/Login/LogOff?returnUrl=%2Fen-US%2Fengagement%2F%3Fid%3D0f51048a-6e24-f111-88b3-70a8a50be077" title="Sign out">
+                        Sign out
+                    </a>
+                  </li>
+                </ul>
+              </li>
+              <li role="none" class="weblink">
+                <a id="VolunteerStatus" style="border:thin black; background-color:#AAAAAA;color:black;">Active</a>
+              </li>
+            
+          </ul>
+          
+        </div>
+      
+      <div class="navbar-right hidden-xs">
+        <div class="xrm-editable-html xrm-attribute no-value"><div class="xrm-attribute-value"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+  
+  
+  
+  
+  
+  
+
+<script type="text/javascript">
+         window.onload = function() {
+            if(window.navigator.appName == "Microsoft Internet Explorer" || window.navigator.userAgent.indexOf("Trident") > 0){
+                var searchElement = document.getElementById("search");
+                if (searchElement != null) searchElement.setAttribute("href", "");
+            }
+          };
+
+          function setHeight(){
+           var windowHeight = window.innerHeight - 140;
+           var navbar = document.getElementById("navbar");
+           if (navbar) {
+            navbar.style.maxHeight = windowHeight + "px";
+            }
+          }
+
+          window.addEventListener('resize', function (event) {
+           setHeight();
+          });
+</script>
+
+	
+
+	<!-- add anti-forgery token-->
+	<div id="antiforgerytoken" data-url="/_layout/tokenhtml"></div>
+
+	
+			<!-- Client Telemetry init if telemetry enabled-->
+			
+
+		
+	
+		<!-- Client Telemetry Wrapper init -->
+		
+
+		<script>
+			window.clientLogWrapper = new ClientLogWrapper();
+		</script>
+		
+
+		
+
+		
+
+							   
+
+							   
+
+						
+	
+
+<script>
+    function formatFullDateEST(dateObj){
+      if(dateObj !== null && dateObj !== undefined && !isNaN(dateObj)){
+        var days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        var months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        var formattedDateString = days[dateObj.getDay()] + ", " + months[dateObj.getMonth()] + " " + dateObj.getDate()
+          + " " + (dateObj.getHours() > 12 ? dateObj.getHours() - 12 : dateObj.getHours()) + ":" + ("0" + dateObj.getMinutes()).slice(-2)
+          + " " + (dateObj.getHours() > 12 ? "PM" : "AM");
+        return formattedDateString;
+      }
+      else{
+        return "Invalid Start Date";
+      }
+    }
+
+    function formatShortTimeEST(dateObj){
+      if(dateObj !== null && dateObj !== undefined && !isNaN(dateObj)){
+        var formattedDateString = (dateObj.getHours() > 12 ? dateObj.getHours() - 12 : dateObj.getHours()) + ":" + ("0" + dateObj.getMinutes()).slice(-2)
+          + " " + (dateObj.getHours() > 12 ? "PM" : "AM");
+        return formattedDateString;
+      }
+      else{
+        return "Invalid Start Date";
+      }
+    }
+
+    function formatOrigDateAndTimeEST(dateObj){
+      if(dateObj !== null && dateObj !== undefined && !isNaN(dateObj)){
+        var formattedDateString = ("0"+(dateObj.getMonth()+1)).slice(-2) + "/" + ("0" + dateObj.getDate()).slice(-2) + "/" + dateObj.getFullYear()
+          + " " + (dateObj.getHours() > 12 ? dateObj.getHours() - 12 : dateObj.getHours()) + ":" + ("0" + dateObj.getMinutes()).slice(-2)
+          + " " + (dateObj.getHours() >= 12 ? "PM" : "AM");
+        return formattedDateString;
+      }
+      else{
+        return "Invalid Start Date";
+      }
+    }
+
+</script>
+  <div class="fetchxml">  
+    
+
+
+    
+    
+    <!--
+    <fetch mapping="logical" version="1.0" distinct="false" output-format="xml-platform">
+  <entity name="msnfp_participation">
+    <attribute name="msnfp_participationtitle" />
+    <attribute name="msnfp_participationid" />
+    <attribute name="msnfp_status" />
+    <order attribute="msnfp_participationtitle" descending="false" />
+    <filter type="and">
+      <condition attribute="msnfp_contactid" operator="eq" value="76540ccb-5093-e811-943c-cea792b29830" />
+      <condition attribute="createdon" operator="on-or-before" value="2026/10/21 02:58:16" />
+    </filter>
+    <link-entity name="msnfp_engagementopportunity" from="msnfp_engagementopportunityid" to="msnfp_engagementopportunityid" alias="ad" link-type="inner">
+      <filter type="and">
+        <condition attribute="msnfp_engagementopportunityid" operator="eq" value="6c78a154-5e24-f111-8342-7c1e525316e3" />
+      </filter>
+      <link-entity name="sjavms_msnfp_engagementopportunity_msnfp_group" from="msnfp_engagementopportunityid" to="msnfp_engagementopportunityid" visible="false" intersect="true">
+        <link-entity name="msnfp_group" from="msnfp_groupid" to="msnfp_groupid" alias="ai">
+          <filter type="and">
+            <condition attribute="statecode" operator="eq" value="0" />
+          </filter>
+          <link-entity name="sjavms_groupmembership" from="sjavms_groupid" to="msnfp_groupid" alias="aj" link-type="inner">
+            <attribute name="statuscode" />
+            <filter type="and">
+              <condition attribute="sjavms_contactid" operator="eq" value="76540ccb-5093-e811-943c-cea792b29830" />
+              <condition attribute="statecode" operator="eq" value="0" />
+            </filter>
+          </link-entity>
+        </link-entity>
+      </link-entity>
+    </link-entity>
+  </entity>
+</fetch>
+    -->
+    
+
+  </div>
+
+<main id="mainContent">
+  <div class="sectionBlockLayout bg-primary">
+    <div class="row no-margin">
+      <div class="col-md-offset-2 col-md-8 container-fluid">
+        <div class="row">
+          <div class="col-xs-12 text-center">
+            <h1>
+  
+
+    <script>
+      var origEventStartDateTime = new Date("Sat, 24 Oct 2026 16:00:00 GMT");
+      var eventStartDateTimeInEST = convertTZ(origEventStartDateTime, "Canada/Eastern");
+    </script>
+
+    Ti-Cats vs Ottawa Redblacks<br>
+    <span style="font-size:smaller;">First Aid/Medical First Response</span>
+    
+</h1>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-xs-12">
+            
+  
+    <div class="row">
+      <div class="col-md-offset-2 col-md-8">
+        
+        
+        
+        
+          <div class="row">
+            <div class="text-center">
+              <h2 class="text-center normal-weight">
+                
+                  
+                  
+                
+              </h2>
+            </div>
+          </div>
+        
+        <div class="row needsSpace">
+          <div class="col-md-1 col-md-offset-1">
+            <span class="pull-right"></span>
+          </div>
+          <div class="col-md-4">
+            <p class="less-margin-bottom"><script>document.write(formatFullDateEST(eventStartDateTimeInEST));</script></p>
+            <p>
+                Multiple Shifts
+            </p>
+          </div>
+          <div class="col-md-1 col-md-offset-1">
+            <span class="pull-right"></span>
+          </div>
+          <div class="col-md-4">
+
+                <p class="less-margin-bottom">Hamilton Stadium</p>
+
+              <p>Hamilton, ON</p>
+
+          </div>          
+          </div>        
+        </div>
+      </div>
+    </div>
+    
+
+          </div>
+        </div>    
+      </div>
+    </div>
+  
+  
+  
+  
+    
+  
+
+  
+    <div class="sectionBlockLayout actionBar">
+      <div class="row" style="margin: 0px;">
+        <div class="row sectionBlockLayout" style="display: flex; flex-wrap: wrap; padding: 8px; margin: 0px;">
+          <div class="container" style="box-sizing: border-box;">
+            
+  <div class="row">
+    <div class="col-md-9">
+      <p class="text-muted statusBar-desc">
+        
+        
+      </p>
+    </div>
+    
+  </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  
+  
+  
+  
+    
+  
+
+  <div class="sectionBlockLayout" style="display: flex; flex-wrap: wrap; padding: 8px; margin: 0px;">
+    <div class="container" style="box-sizing: border-box;">
+      
+        <div class="row">
+          <ul role="tablist" class="nav nav-pills">
+                
+              <li class="active">
+                <a role="tab" data-toggle="pill" href="#Schedule">
+                  <span class="text-primary">
+                      Schedule
+                  </span>
+                </a>
+              </li>
+                
+              <li class="">
+                <a role="tab" data-toggle="pill" href="#Details">
+                  <span class="text-primary">
+                      Details
+                  </span>
+                </a>
+              </li>
+            
+            </ul>
+        </div>
+      
+      
+  
+    <div class="alerty"></div>
+    <div class="row tab-content">
+
+      <div id="Schedule" class="tab-pane fade in active" role="tabpanel">
+        <div class="row no-margin">
+          <div class="col-md-12">
+            <h2 class="float-left">Shift Options</h2>
+            <p class="text-muted shift-status-desc"><em>
+              
+              
+            </em></p>
+          </div>
+        </div>        
+        <div class="row no-margin">
+          
+<!--
+<fetch mapping="logical" version="1.0" distinct="true" output-format="xml-platform">
+  <entity name="msnfp_engagementopportunityschedule">
+    <attribute name="msnfp_engagementopportunityscheduleid" />
+    <attribute name="msnfp_engagementopportunityschedule" />
+    <attribute name="msnfp_shiftname" />
+    <attribute name="msnfp_effectiveto" />
+    <attribute name="msnfp_effectivefrom" />
+    <attribute name="msnfp_hours" />
+    <attribute name="msnfp_minimum" />
+    <attribute name="msnfp_maximum" />
+    <attribute name="msnfp_number" />
+    <order attribute="msnfp_effectivefrom" descending="false" />
+    <filter type="and">
+      <condition attribute="msnfp_engagementopportunity" operator="eq" value="6c78a154-5e24-f111-8342-7c1e525316e3" />
+      <condition attribute="createdon" operator="on-or-before" value="10/21/2026" />
+      <condition attribute="statecode" operator="eq" value="0" />
+    </filter>
+    <link-entity name="msnfp_participationschedule" from="msnfp_engagementopportunityscheduleid" to="msnfp_engagementopportunityscheduleid" alias="pSched" link-type="outer">
+      <attribute name="msnfp_participationscheduleid" />
+      <attribute name="msnfp_schedulestatus" />
+      <filter type="and">
+        <condition attribute="msnfp_participationid" operator="eq" value="" />
+      </filter>
+    </link-entity>
+  </entity>
+</fetch>
+-->
+
+
+            <table class="table table-bordered table-hover col-xs-12 col-md-7">
+              <thead>
+                <tr>
+                  <th id="isSelected" aria-label="Select"></th>
+                  <th id="shiftName">Shift Name</th>
+                  <th id="shiftStart">Start Date</th>
+                  <th id="shiftEnd">End Date</th>
+                  <th id="shiftHours" class="hidden-xs">Hours</th>
+                  <th id="shiftVols" class="hidden-xs">Volunteers Needed</th>
+                  <th id="shiftStatus">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                
+                  
+                  <!--
+                  schedIsFull: 
+                  eSched.msnfp_effectivefrom: 2026-10-24T16:00:00Z
+                  eSched.msnfp_effectiveto: 2026-10-24T23:00:00Z
+                  now: 10/21/2026 2:56:16 AM
+                  participation.msnfp_status.value: 
+                  participation['aj.statuscode'].value: 
+                  engagement.msnfp_engagementopportunitystatus.value: 844060002
+                  eSched['pSched.msnfp_schedulestatus'].value = 
+                  eSched['pSched.msnfp_schedulestatus'].label = 
+                  -->
+                  
+                    
+                  
+
+                  <script>
+                    var origStartDate = new Date("Sat, 24 Oct 2026 16:00:00 GMT");
+                    var origEndDate = new Date("Sat, 24 Oct 2026 23:00:00 GMT");
+                    var startDateInEST = formatOrigDateAndTimeEST(convertTZ(origStartDate, "Canada/Eastern"));
+                    var endDateInEST = formatOrigDateAndTimeEST(convertTZ(origEndDate, "Canada/Eastern"));
+                  </script>
+
+                  <tr class="">
+                    <td>
+                      <input type="checkbox" id="4299cb8a-5e24-f111-8342-7c1e525316e3" name="MFR" aria-labelledby="isSelected" data-value="{
+                      &quot;id&quot;: &quot;4299cb8a-5e24-f111-8342-7c1e525316e3&quot;,
+                      &quot;name&quot;: &quot;MFR&quot;,
+                      
+                        &quot;isCancelled&quot;: false,
+                                          
+                      &quot;startDate&quot;: &quot;2026-10-24T16:00:00Z&quot;,
+                      &quot;endDate&quot;: &quot;2026-10-24T23:00:00Z&quot;,
+                      &quot;maxVolunteers&quot;: 10,
+                      &quot;numVolunteers&quot;: 3,
+                      &quot;participationId&quot;: &quot;&quot;,
+                      &quot;pSchedId&quot;: &quot;&quot;,
+                      &quot;pSchedStatus&quot;: &quot;&quot;,
+                      &quot;eventId&quot;: &quot;6c78a154-5e24-f111-8342-7c1e525316e3&quot;
+                    }">
+                    </td>                 
+                    <td aria-labelledby="shiftName">MFR</td>
+                    <td aria-labelledby="shiftStart" class="shiftStart"><script>document.write(startDateInEST);</script></td>
+                    <td aria-labelledby="shiftEnd" class="shiftEnd"><script>document.write(endDateInEST);</script></td>
+                    <td aria-labelledby="shiftHours" class="hidden-xs">7</td>
+                    <td aria-labelledby="shiftVols" class="hidden-xs">
+                      
+                        7
+                      
+                    </td>
+                    <td aria-labelledby="shiftStatus">                  
+                      
+                    </td>
+                  </tr>
+                
+                  
+                  <!--
+                  schedIsFull: 
+                  eSched.msnfp_effectivefrom: 2026-10-24T16:00:00Z
+                  eSched.msnfp_effectiveto: 2026-10-24T23:00:00Z
+                  now: 10/21/2026 2:56:16 AM
+                  participation.msnfp_status.value: 
+                  participation['aj.statuscode'].value: 
+                  engagement.msnfp_engagementopportunitystatus.value: 844060002
+                  eSched['pSched.msnfp_schedulestatus'].value = 
+                  eSched['pSched.msnfp_schedulestatus'].label = 
+                  -->
+                  
+                    
+                  
+
+                  <script>
+                    var origStartDate = new Date("Sat, 24 Oct 2026 16:00:00 GMT");
+                    var origEndDate = new Date("Sat, 24 Oct 2026 23:00:00 GMT");
+                    var startDateInEST = formatOrigDateAndTimeEST(convertTZ(origStartDate, "Canada/Eastern"));
+                    var endDateInEST = formatOrigDateAndTimeEST(convertTZ(origEndDate, "Canada/Eastern"));
+                  </script>
+
+                  <tr class="">
+                    <td>
+                      <input type="checkbox" id="7e43c696-5e24-f111-8342-7c1e525316e3" name="Apprentice" aria-labelledby="isSelected" data-value="{
+                      &quot;id&quot;: &quot;7e43c696-5e24-f111-8342-7c1e525316e3&quot;,
+                      &quot;name&quot;: &quot;Apprentice&quot;,
+                      
+                        &quot;isCancelled&quot;: false,
+                                          
+                      &quot;startDate&quot;: &quot;2026-10-24T16:00:00Z&quot;,
+                      &quot;endDate&quot;: &quot;2026-10-24T23:00:00Z&quot;,
+                      &quot;maxVolunteers&quot;: 4,
+                      &quot;numVolunteers&quot;: 5,
+                      &quot;participationId&quot;: &quot;&quot;,
+                      &quot;pSchedId&quot;: &quot;&quot;,
+                      &quot;pSchedStatus&quot;: &quot;&quot;,
+                      &quot;eventId&quot;: &quot;6c78a154-5e24-f111-8342-7c1e525316e3&quot;
+                    }">
+                    </td>                 
+                    <td aria-labelledby="shiftName">Apprentice</td>
+                    <td aria-labelledby="shiftStart" class="shiftStart"><script>document.write(startDateInEST);</script></td>
+                    <td aria-labelledby="shiftEnd" class="shiftEnd"><script>document.write(endDateInEST);</script></td>
+                    <td aria-labelledby="shiftHours" class="hidden-xs">7</td>
+                    <td aria-labelledby="shiftVols" class="hidden-xs">
+                      
+                        -1
+                      
+                    </td>
+                    <td aria-labelledby="shiftStatus">                  
+                      
+                    </td>
+                  </tr>
+                
+              </tbody>            
+            </table>
+          <div class="col-xs-12">
+          <div class="float-left" style="margin-right: 20px">
+              
+                
+              
+              
+                
+
+    
+        
+                         
+        
+    
+
+
+
+
+
+    
+
+
+    <button id="engagementStatusBtn" class="btn btn-warning" style="display:none;">Register for This Event</button>
+        
+              
+              </div>
+            <button class="btn btn-warning float-left" id="bookShifts" disabled="">Book Shifts</button>
+            <button role="button" class="btn btn-warning float-left left-space" id="cancelShifts" disabled="">Cancel Shifts</button>
+            <span id="shiftLoader" class="text-primary left-space"></span>
+          </div>
+        </div>
+      </div>
+
+      <div id="Details" class="tab-pane fade" role="tabpanel">
+        <div class="row no-margin">
+          <div class="col-md-8 engagementDescription needsSpace">
+          
+              Tiger Cat CFL Game
+          </div>
+          <div class="col-md-4">
+            <h2>
+
+ <div class="xrm-editable-html xrm-attribute" data-languagecontext="English"><div class="xrm-attribute-value">Qualifications</div></div>
+</h2>
+            
+            
+              <p>None</p>
+                        
+            <h2>Location</h2>
+            <p>Hamilton Stadium
+64 Melrose Ave N  
+Hamilton, ON L8L 8C1</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  
+
+    </div>
+  </div>
+</main>
+
+    <script>
+    /*** WebApi template code */
+        (function(webapi, $){
+            function safeAjax(ajaxOptions) {
+                var deferredAjax = $.Deferred();        
+                shell.getTokenDeferred().done(function (token) {
+                    // add headers for AJAX
+                    if (!ajaxOptions.headers) {
+                        $.extend(ajaxOptions, {
+                            headers: {
+                                "__RequestVerificationToken": token
+                            }
+                        }); 
+                    } else {
+                        ajaxOptions.headers["__RequestVerificationToken"] = token;
+                    }
+                    $.ajax(ajaxOptions)
+                        .done(function(data, textStatus, jqXHR) {
+                            validateLoginSession(data, textStatus, jqXHR, deferredAjax.resolve);
+                        }).fail(deferredAjax.reject); //AJAX
+                }).fail(function () {
+                    deferredAjax.rejectWith(this, arguments); // on token failure pass the token AJAX and args
+                });
+        
+                return deferredAjax.promise(); 
+            }
+            webapi.safeAjax = safeAjax;
+        })(window.webapi = window.webapi || {}, jQuery)
+
+    /*** Adds or removes the active class from a clicked row */
+    $(function() {
+        $("tr").click(function() {
+            if (!($(this).hasClass("disabledRow")) && !($(this).children("th").length > 0)) {
+                if ($(this).hasClass("active")) {
+                    deactivateRow(this);
+                }
+                else {                   
+                    activateRow(this);
+                    // disable all other rows
+                    // first get the current row's identifier
+                    var currentId = $(this).find("input[type=checkbox]").attr("id")
+                    $("input[type=checkbox][id!='" + currentId + "']").closest("tr").each(function(){deactivateRow(this)});
+                }
+            }       
+        });
+    });
+
+    /*** Books all selected shifts */
+    $(function() {
+        $("#bookShifts").click(function() {
+            $("#bookShifts").prop('disabled', true);
+            oldStatus = $("#cancelShifts").prop('disabled');           
+            $("#cancelShifts").prop('disabled', true);
+            $("#shiftLoader>.spinner").css("visibility", "visible");        
+            var returnVal = "";        
+            $("tr.active").each(function(index, curValue) {
+                //eSched = JSON.parse($(this).find("input[type='checkbox']").data('value'));
+                eSched = $(this).find("input[type='checkbox']").data('value');
+                var startDate = $(this).find("td[class='shiftStart']")[0].innerText;
+                var endDate = $(this).find("td[class='shiftEnd']")[0].innerText;
+                if(eSched.number && eSched.maxVolunteers && eSched.number === eSched.maxVolunteers) {
+                    var message = eSched.name + " is full. Please choose another shift.";
+                    displayMessageResetPage(message);
+                }
+                else if(eSched.isCancelled) {
+                    var message = "This engagement has been cancelled by the volunteer organizer.";
+                    displayMessageResetPage(message);
+                }
+                else if(Date.parse(eSched.endDate) < Date.now()) {
+                    var message = eSched.name + " has already ended.";
+                    displayMessageResetPage(message);
+                }
+                else if(eSched.pSchedStatus && eSched.pSchedStatus == 335940000) {
+                    var message = "You are already registered for " + eSched.name;
+                    displayMessageResetPage(message);
+                }
+                else {
+                    if(eSched.pSchedId) {
+                        updateShiftStatus(eSched.pSchedId, 335940000, oldStatus);
+                    }
+                    else { 
+                        // need to claculate sjavms_hours (end date - start date)
+                        var hours = getNumberOfHours(new Date(eSched.startDate), new Date(eSched.endDate));
+                        var volunteerId = '76540ccb-5093-e811-943c-cea792b29830';
+                        createPSched(eSched.id, eSched.participationId, oldStatus, hours, volunteerId, startDate, endDate, eSched.eventId);
+                    }
+                }
+            });  
+        });
+    });
+    
+    function getNumberOfHours(startDate, endDate){
+        const startDateutc = Date.UTC(startDate.getFullYear(), startDate.getMonth(), startDate.getDate(), startDate.getHours(), startDate.getMinutes(), startDate.getSeconds(), startDate.getMilliseconds());
+        const endDateutc = Date.UTC(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), endDate.getHours(), endDate.getMinutes(), endDate.getSeconds(), endDate.getMilliseconds());
+        hour = 1000*60*60;
+        return(endDateutc - startDateutc)/hour;
+    }
+
+    function displayMessageResetPage(message){
+        console.log(message);
+        var alertHtml = buildErrorAlert(message);
+        $(".alerty").html(alertHtml);
+        $(".alerty").show();
+        $("#shiftLoader>.spinner").css("visibility", "hidden"); 
+        $("#cancelShifts").prop('disabled', oldStatus);
+        $("#bookShifts").prop('disabled', false);
+    }
+
+    /*** Cancels selected shifts */
+    $(function() {
+        $("#cancelShifts").click(function() {
+            $("#cancelShifts").prop('disabled', true);
+            oldStatus = $("#bookShifts").prop('disabled');
+            $("#bookShifts").prop('disabled', true);
+            $("#shiftLoader>.spinner").css("visibility", "visible");            
+            $("tr.active").each(function() {
+                //eSched = JSON.parse($(this).find("input[type='checkbox']").data('value'));
+                eSched = $(this).find("input[type='checkbox']").data('value');
+                if(Date.parse(eSched.endDate) < Date.now()) {
+                    console.log(eSched.name + " has already ended.");
+                    updateShiftStatus(eSched.pSchedId, 335940003, oldStatus);
+                }
+                else if(!eSched.pSchedId) {
+                    console.log("You are not registered for " + eSched.name);
+                }
+                else if(eSched.pSchedStatus && eSched.pSchedStatus == 335940003) {
+                    console.log("You have already cancelled your registration for " + eSched.name);
+                }
+                else {
+                    updateShiftStatus(eSched.pSchedId, 335940003, oldStatus);
+                }
+            });         
+        });
+    });
+
+    /*** Allows the user to attempt to apply to an engagement */
+    $(function() {
+        $("#engagementStatusBtn").click(function() {
+            $(this).prop('disabled', true);
+            $('#appLoader>.spinner').css('visibility', 'visible');
+            
+                
+                    createParticipation();
+                
+                     
+        });
+    });
+
+    /*** Allows the user to attempt to cancel their participation in an engagement */
+    $(function() {
+        $("#cancelParticipationBtn").click(function() {
+            $(this).prop('disabled', true);
+            $("#appLoader>.spinner").css("visibility", "visible");            
+            
+                
+                        
+        });
+    });
+
+    /*** Activates a table row */
+    function activateRow(row) {
+        $(row).addClass("active");
+        $(row).find("input").prop("checked", true);
+
+        // Check if the Book/Cancel Shift button need to be turned on
+        //$status = $(row).find("h5 > span").text().trim();
+        $status = $(row).find("span.status-message-text").text()
+                
+        goalText = "Registered to Attend";  
+        if ($status === goalText) {
+            $cancelBtn = $("#cancelShifts");
+            if($cancelBtn.prop('disabled')) {
+                $cancelBtn.prop('disabled',false);
+            }
+        }
+        else {
+            $bookBtn = $("#bookShifts");        
+            if($bookBtn.prop('disabled')) {
+                $bookBtn.prop('disabled',false);
+            }
+        }
+    }
+
+    /*** Deactivates a table row */
+    function deactivateRow(row) {
+        $(row).removeClass("active");
+        $(row).find("input").prop("checked", false);
+            
+        // Check if the Book/Cancel Shift button needs to be turned off
+        //$status = $(row).find("h5 > span").text().trim();
+        $status = $(row).find("span.status-message-text").text()
+                
+        goalText = "Registered to Attend";        
+        $otherSelectedRows = $("tr.active");
+        if ($status === goalText) {
+            //$otherRegisteredRows = $otherSelectedRows.find("h5 > span").filter(function() { return ($(this).text().trim() === goalText) });
+            $otherRegisteredRows = $otherSelectedRows.find("span.status-message-text").filter(function() { return ($(this).text().trim() === goalText) });
+            $cancelBtn = $("#cancelShifts");
+            if(!$cancelBtn.prop('disabled') && $otherRegisteredRows.length === 0) {
+                $cancelBtn.prop('disabled',true);
+            }
+        }
+        else {
+            $bookBtn = $("#bookShifts");
+            //$otherUnregisteredRows = $otherSelectedRows.not($otherSelectedRows.filter(function() { return ($(this).find("h5 > span").text().trim() === goalText) }));    
+            $otherUnregisteredRows = $otherSelectedRows.not($otherSelectedRows.filter(function() { return ($(this).find("span.status-message-text").text().trim() === goalText) }));    
+            if(!$bookBtn.prop('disabled') && $otherUnregisteredRows.length === 0) {
+                $bookBtn.prop('disabled',true);
+            }
+        }
+    }
+
+    /*** Creates a new participation schedule */
+    function createPSched(eSchedId, participationId, oldStatus, hours, volunteerId, startDate, endDate, eventId) {
+        webapi.safeAjax({
+            type: "POST",
+            url: "/_api/msnfp_participationschedules",
+            contentType: "application/json",
+            data: JSON.stringify({
+                "test@example.com": "/msnfp_engagementopportunityschedules(" + eSchedId + ")",
+                //"test@example.com": "/msnfp_participations(" + participationId + ")",
+                "msnfp_schedulestatus": 335940000,
+                "sjavms_hours": hours,
+                //"sjavms_start": new Date(startDate).toISOString(),
+                //"sjavms_end": new Date(endDate).toISOString(),
+                "test@example.com": "/contacts(" + volunteerId + ")",
+                "test@example.com": "/msnfp_engagementopportunities(" + eventId + ")"
+            }),
+            success: function(res) {
+                $("#shiftLoader>.spinner").css("visibility", "hidden"); 
+                //return Promise.resolve("success");
+                window.location.reload();
+            },
+            error: function(err) {
+                alertHtml = buildErrorAlert(err.responseText);
+                $(".alerty").html(alertHtml);
+                $(".alerty").show();
+                $("#shiftLoader>.spinner").css("visibility", "hidden"); 
+                $("#cancelShifts").prop('disabled', oldStatus);
+                $("#bookShifts").prop('disabled', false);
+                //return Promise.resolve("error");
+            }
+     });
+    }
+
+    /*** Updates the status of a given participation schedule */
+    function updateShiftStatus(participationId, status, oldStatus) {
+        webapi.safeAjax({
+            type: "PATCH",
+            url: "/_api/msnfp_participationschedules(" + participationId + ")",
+            contentType: "application/json",
+            data: JSON.stringify({
+                "msnfp_schedulestatus": status
+            }),
+            success: function(res) {
+                $("#shiftLoader>.spinner").css("visibility", "hidden"); 
+                window.location.reload();
+            },
+            error: function(err) {
+                alertHtml = buildErrorAlert(err.responseText);
+                $(".alerty").html(alertHtml);
+                $(".alerty").show();
+                $("#shiftLoader>.spinner").css("visibility", "hidden"); 
+                if(status === 335940000 ) {
+                    $("#cancelShifts").prop('disabled', oldStatus);
+                    $("#bookShifts").prop('disabled', false);
+                }
+                else {
+                    $("#cancelShifts").prop('disabled', false);
+                    $("#bookShifts").prop('disabled', oldStatus);
+                }
+            }
+        });
+        return false;
+    }
+
+    /*** Creates a participation for the given user */
+    function createParticipation() {
+        webapi.safeAjax({
+            type: "POST",
+            url: "/_api/msnfp_participations",
+            contentType: "application/json",
+            data: JSON.stringify({
+                "test@example.com": "/contacts(76540ccb-5093-e811-943c-cea792b29830)",
+                "test@example.com": "/msnfp_engagementopportunities(6c78a154-5e24-f111-8342-7c1e525316e3)",
+                "msnfp_status": 844060000
+            }),
+            success: function(res) {
+                markContactAsVolunteer();                
+            },
+            error: function (err) {
+                alertHtml = buildErrorAlert(err.responseText);
+                $(".alerty").html(alertHtml);
+                $(".alerty").show();
+                $("#appLoader>.spinner").css("visibility", "hidden"); 
+                $("#engagementStatusBtn").prop('disabled', false);
+            }
+        });
+        return false;
+    }
+
+    /*** Updates a contact to be marked as a volunteer */
+    function markContactAsVolunteer() {
+        webapi.safeAjax({
+            type: "PATCH",
+            url: "/_api/contacts(76540ccb-5093-e811-943c-cea792b29830)",
+            contentType: "application/json",
+            data: JSON.stringify({
+                "msnfp_volunteer": true
+            }),
+            success: function(res) {
+                $("#appLoader>.spinner").css("visibility", "hidden");
+                window.location.reload();
+            },
+            error: function(err) {
+                alertHtml = buildErrorAlert(err.responseText);
+                $(".alerty").html(alertHtml);
+                $(".alerty").show();
+                $("#appLoader>.spinner").css("visibility", "hidden");
+                $("#engagementStatusBtn").prop('disabled', false);
+            }
+        })
+    }
+
+    /*** Updates an existing participation for the given user */
+    function updatePSchedStatus() {
+                
+            webapi.safeAjax({
+                type: "PATCH",
+                url: "/_api/msnfp_participations()",
+                contentType: "application/json",
+                data: JSON.stringify({
+                    
+                        "msnfp_status": 844060004
+                    
+                }),
+                success: function(res) {
+                    $("#appLoader>.spinner").css("visibility", "hidden"); 
+                    window.location.reload();
+                },
+                error: function(err) {
+                    alertHtml = buildErrorAlert(err.responseText);
+                    $(".alerty").html(alertHtml);
+                    $(".alerty").show();
+                    $("#appLoader>.spinner").css("visibility", "hidden");
+                                            
+                        $("#cancelParticipationBtn").prop('disabled', false);
+                                            
+                }
+            });
+            return false;
+        
+    }
+
+    /*** Builds the error alert */
+    function buildErrorAlert(message) {
+        return `<div class="alert alert-danger alert-dismissible" role="alert">
+                    <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                    <strong>Error:</strong> ${message}
+                </div>`
+    }
+</script>  
+
+
+
+	
+
+		
+		
+	
+
+	
+		<div id="pp-native-controls-react-root"></div>
+<script>window._nativeControlConfig = { "publicPath":"https://content.powerapps.com/resource/powerappsportal/controls", "versions": {"pcf_loader":"0.0.51","pcf_controls":"3.24.9","mf_shared":"0.2.32","host":"0.15.2","data_grid":"1.12.4","controls_fluent_v9":"0.0.54"}, "pvaEmbedded": { "defaultWidgetMode": "normal", "useCustomTypingIndicator": false, "skipSingleBotWelcomeScreen": false } }</script>
+
+		
+	
+	
+		
+<script>
+
+$(document).ready(function(){
+    $('a.add-folder.btn.btn-info.action').hide()
+})
+
+</script>
+
+
+
+<script>
+
+
+function replaceMissingIcons(){
+        $("div.input-append.input-group.datetimepicker").on("dp.show", function(){
+        $(this).find("span.glyphicon.glyphicon-chevron-right").removeClass("glyphicon glyphicon-chevron-right").html("&rarr;");
+        $(this).find("span.glyphicon.glyphicon-chevron-left").removeClass("glyphicon glyphicon-chevron-left").html("&larr;");
+        $(this).find("span.glyphicon.glyphicon-remove").removeClass("glyphicon glyphicon-remove").html("&#128473;");
+        //$(this).find("span.icon-time.fa-clock-o.icon-calendar.fa-calendar").removeClass("icon-time fa-clock-o icon-calendar fa-calendar icon-time fa fa-clock-o).text("date/time");
+        $(this).find("span.icon-time.fa.fa-clock-o").removeClass("icon-time fa-clock-o icon-calendar fa-calendar icon-time fa fa-clock-o").html("&varr;");
+        $(this).find("span.icon-time fa-clock-o icon-calendar fa-calendar").removeClass("icon-time fa-clock-o icon-calendar fa-calendar icon-time fa fa-clock-o").html("&varr;");
+        });
+
+        $("*").on("dp.show", function(){
+        $(this).find("span.glyphicon.glyphicon-chevron-right").removeClass("glyphicon glyphicon-chevron-right").html("&rarr;");
+        $(this).find("span.glyphicon.glyphicon-chevron-left").removeClass("glyphicon glyphicon-chevron-left").html("&larr;");
+        $(this).find("span.glyphicon.glyphicon-remove").removeClass("glyphicon glyphicon-remove").html("&#128473;");
+        //$(this).find("span.icon-time.fa-clock-o.icon-calendar.fa-calendar").removeClass("icon-time fa-clock-o icon-calendar fa-calendar icon-time fa fa-clock-o).text("date/time");
+        $(this).find("span.icon-time.fa.fa-clock-o").removeClass("icon-time fa-clock-o icon-calendar fa-calendar icon-time fa fa-clock-o").html("&varr;");
+        $(this).find("span.icon-time fa-clock-o icon-calendar fa-calendar").removeClass("icon-time fa-clock-o icon-calendar fa-calendar icon-time fa fa-clock-o").html("&varr;");
+
+    });
+}
+$(document).ready(function(){
+
+   //replaceMissingIcons();
+})
+
+</script>
+
+
+
+
+ <div class="xrm-editable-html xrm-attribute" data-languagecontext="English"><div class="xrm-attribute-value"><div class="acknowledgement" style="display: flex; justify-content: center;padding-top: 20px; padding-bottom: 20px">
+<span style="padding-right: 5rem;">St. John Ambulance Canada acknowledges<br>the financial support of Public Safety Canada.</span><img src="/PublicSafetyCanadaEn.jpg" style="max-width:350px;">
+</div></div></div>
+
+	
+
+	<script type="text/javascript">
+
+		function trackCopilotCustomUsage(botSchema) {
+			const request = {
+				botSchemaName: botSchema
+			}
+			var json = JSON.stringify(request);
+			shell.ajaxSafePost({
+				type: "POST",
+				contentType: "application/json",
+				url: "/_services/copilot/TrackUsage",
+				data: json
+			}).done(function () {
+			}).fail(function (jqXhr) {
+			});
+		}
+
+		function findAndLogCustomCopilotUsage() {
+			const pageSource = document.documentElement.outerHTML;
+			const customPvaBotWebchatRegex = /api\.(preprod\.|test\.)?powerplatform\.(com|us|cn|appsplatform\.us)\/powervirtualagents\/botsbyschema\/([^/]+)\/directline\/token/;
+			const customPvaBotIframeRegex = /powerva\.microsoft\.com\/environments\/([0-9a-fA-F\-]+)\/bots\/([^/]+)\/webchat/;
+			const omniChannelRegex = /livechatwidget\/scripts\/LiveChatBootstrapper\.js/;
+
+			const matchPvaBotWebchat = pageSource.match(customPvaBotWebchatRegex);
+			if (matchPvaBotWebchat && matchPvaBotWebchat[3]) {
+				trackCopilotCustomUsage(matchPvaBotWebchat[3]);
+			}
+
+			const matchPvaBotIframe = pageSource.match(customPvaBotIframeRegex);
+			if (matchPvaBotIframe && matchPvaBotIframe[2]) {
+				trackCopilotCustomUsage(matchPvaBotIframe[2]);
+			}
+
+			const matchOmniChannel = pageSource.match(omniChannelRegex);
+			if (matchOmniChannel && matchOmniChannel[0]) {
+				trackCopilotCustomUsage("omnichannelWidget");
+			}
+		}
+
+		window.addEventListener("load", function () {
+			findAndLogCustomCopilotUsage();
+		});
+	</script>
+
+		
+			
+			
+			
+			
+		
+	
+
+	
+
+	
+
+	
+
+	
+
+	
+	
+	
+	<script>
+        //this event will update the title of the page based on active breadcrumb
+        $('.breadcrumb').ready(function () {
+            if ($('.breadcrumb').is(':visible')) {
+                document.querySelector('title').innerHTML = ($('.breadcrumb > li.active').text() + "&nbsp;· SJA");
+            }
+        });
+
+        function GoToNewEditor() {
+            var editCmsUrlSegment = "EditInCms";
+            var currentUrl = window.location.href;
+            if (currentUrl.indexOf('?') > -1) {
+                var urlSegments = currentUrl.split("?");
+                window.location.href = window.location.origin + '/' + editCmsUrlSegment + window.location.pathname + '?' + urlSegments[1];
+            }
+            else {
+                window.location.href = window.location.origin + '/' + editCmsUrlSegment + window.location.pathname;
+            }
+        }
+    </script>
+	
+		
+		
+	
+		
+				<script>
+					if ('serviceWorker' in navigator) {
+						navigator.serviceWorker.getRegistrations().then(function (registrations) {
+							for (let registration of registrations) {
+								registration.unregister();
+							}
+						}).catch(function (err) {
+							console.log('Service Worker unregister action failed: ', err);
+						});
+					}
+				</script>
+			
+	
+		
+	<!--Start Show Session Expire Warning Popup here -->
+    
+		
+
+
+
+

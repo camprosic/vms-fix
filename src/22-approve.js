@@ -144,7 +144,7 @@
       const status = sel.value || (sel.querySelector('option[selected]')?.value ?? '');
       const hraw = v('sjavms_hours').trim();
       if (hraw && !/^\d+(\.\d+)?$/.test(hraw)) throw new Error(`The form's hours value "${hraw}" isn't a plain number; not touching this shift.`);
-      return { shiftId, participation: v('msnfp_participationid_name'), scheduleName: v('msnfp_engagementopportunityscheduleid_name'), start: fromCrmIso(v('sjavms_start')), end: fromCrmIso(v('sjavms_end')), hours: hraw ? Number(hraw) : 0, status, statusOptions };
+      return { shiftId, participation: v('msnfp_participationid_name'), scheduleName: v('msnfp_engagementopportunityscheduleid_name'), scheduleId: v('msnfp_engagementopportunityscheduleid'), participationId: v('msnfp_participationid'), start: fromCrmIso(v('sjavms_start')), end: fromCrmIso(v('sjavms_end')), hours: hraw ? Number(hraw) : 0, status, statusOptions };
     }
     // Belt and braces at post time: the form we're about to submit must still
     // be Pending, for the volunteer we think it is, and (if the caller tells
