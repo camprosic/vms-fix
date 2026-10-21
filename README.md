@@ -11,10 +11,6 @@ it's helpful.
 ## Install
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/) in any browser
-
-## Install
-
-1. Install [Tampermonkey](https://www.tampermonkey.net/) in any browser
 2. Open this link. Tampermonkey will show the script and an **Install** button:
 
    https://raw.githubusercontent.com/camprosic/vms-fix/main/d0007-ops.user.js
