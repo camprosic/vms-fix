@@ -1,3 +1,8 @@
 .DS_Store
-node_modules/
 *.log
+
+# local only - test harness, fixtures and dev deps live here but are not part of the published script
+node_modules
+test/
+package.json
+package-lock.json
