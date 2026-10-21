@@ -1,15 +1,14 @@
 # vms-fix
 
-A Tampermonkey userscript that puts a D0007-shaped front end on the national VMS portal. Read-only for now. It runs on the
+A Tampermonkey userscript that puts an actually useful frontend on the national VMS portal. Read-only for now. It runs on the
 portal page as whoever is signed in, so it only ever shows what that person's VMS role already lets them see, and it
 never writes anything back.
 
-Built for St. John Ambulance Hamilton-Wentworth (D0007) MFR. Other groups could reuse it by changing `GROUP_ID` at the
-top of the script.
+Built for D0007 Hamilton but others are welcome to use it. Hope its helpful.
 
 ## Install
 
-1. Install [Tampermonkey](https://www.tampermonkey.net/) in Chrome / Edge / Firefox / Safari.
+1. Install [Tampermonkey](https://www.tampermonkey.net/) in any browser
 2. Open this link. Tampermonkey will show the script and an **Install** button:
 
    https://raw.githubusercontent.com/camprosic/vms-fix/main/d0007-ops.user.js
