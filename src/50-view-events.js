@@ -51,6 +51,7 @@
     if (!box) return;
     try {
       const d = await VMS.eventDetail(id);
+      const title = box.closest('.card')?.querySelector('h3')?.textContent || '';
       const byStatus = {}; d.participants.forEach(p => { byStatus[p.status || '—'] = (byStatus[p.status || '—'] || 0) + 1; });
       box.innerHTML = `
         ${d.description ? `<p class="muted" style="margin:0 0 8px">${esc(d.description)}</p>` : ''}
@@ -59,8 +60,11 @@
           ${d.participants.map(p => `<tr><td>${esc(p.name)}</td><td>${statusPill(p.status)}</td><td>${esc(fmtD(p.signedUp))}</td><td class="n">${p.hours || ''}</td><td class="n">${p.pendingHours || ''}</td></tr>`).join('')}
         </tbody></table></div>` : '<div class="muted">Nobody has signed up yet.</div>'}
         ${d.shifts.length ? `<div class="bar" style="margin-top:12px"><b>Reported shifts (${d.shifts.length})</b></div><div class="tbl"><table><thead><tr><th>Volunteer</th><th>Start</th><th class="n">Hours</th><th>Status</th></tr></thead><tbody>
-          ${d.shifts.map(s => `<tr><td>${esc(s.name)}</td><td>${esc(fmtDT(s.start))}</td><td class="n">${s.hours || ''}</td><td>${statusPill(s.status)}</td></tr>`).join('')}
+          ${d.shifts.map(s => `<tr><td>${esc(s.name)}</td><td>${esc(fmtDT(s.start))}</td><td class="n">${s.hours || ''}</td><td>${statusPill(s.status)}${/pending/i.test(s.status) ? ` <button class="btn ap-go" data-approve="${esc(title)}" title="Open this event's pending shifts on the Hours tab">Approve…</button>` : ''}</td></tr>`).join('')}
         </tbody></table></div>` : ''}`;
+      // Pending rows jump to the Hours tab filtered to this event, so approvals
+      // can be done event by event from here.
+      box.querySelectorAll('[data-approve]').forEach(b => b.addEventListener('click', () => { state.pendingSearch = b.dataset.approve; state.tab = 'hours'; state.q = ''; render(); }));
     } catch (e) { box.innerHTML = `<div class="err">${esc(e.message || e)}</div>`; }
   }
   const CSS_ID = s => String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
