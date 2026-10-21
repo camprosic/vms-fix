@@ -121,6 +121,10 @@ Power Pages web api (`/_api/`) used to expose a lot more and got cut right back 
 script leans on the Liquid pages, csv feeds and the subgrid endpoint instead - those are what the portal's own UI
 runs on, so they're much less likely to be switched off.
 
+There *were* exposed API backends with which I tried making an independent interface from, but anything cross-domain
+obviously flagged calls (kudos @national for catching this) and they've been disabling them as I developed. So
+I'm left with this solution.
+
 ## Known limits
 
 - Certs gained more than two years ago that expire after next year don't show up in any VMS report window.
