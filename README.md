@@ -4,7 +4,7 @@ A Tampermonkey userscript that puts an actually useful frontend on the national 
 portal page as whoever is signed in, so it only ever shows what that person's VMS role already lets them see, and it
 never writes anything back.
 
-Built for D0007 Hamilton but others are welcome to use it. Hope its helpful.
+Built for D0007 Hamilton but others are welcome to use it - just be sure to change "GROUP_ID" global variable. Hope it's helpful.
 
 ## Install
 
