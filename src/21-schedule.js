@@ -60,9 +60,11 @@
       let out = null;
       try {
         const f = await Approvals.loadForm(bookingId);
-        const kind = kindOf((f.scheduleName || '').split(' - ')[0]);
-        out = { role: kind === 'Other' ? null : kind, shiftName: f.scheduleName || '' };
-      } catch (e) { out = { role: null, shiftName: '', error: e.message || String(e) }; }
+        // "MFR day 3 - Norfolk county fair": the shift name is the part before " - <event>"
+        const shiftName = (f.scheduleName || '').replace(/\s+-\s+[^-]*$/, '').trim() || f.scheduleName || '';
+        const kind = kindOf(shiftName);
+        out = { role: kind === 'Other' ? null : kind, shiftName, scheduleId: norm(f.scheduleId || '') };
+      } catch (e) { out = { role: null, shiftName: '', scheduleId: '', error: e.message || String(e) }; }
       formCache.set(bookingId, out);
       return out;
     }
@@ -89,7 +91,7 @@
         const people = bookings.filter(b => b.day === day).map(b => {
           const cached = formCache.get(b.id);
           const role = cached && cached.role ? cached.role : certRole(b.name, ctx.certs);
-          return { id: b.id, name: b.name, start: b.start, end: b.end, hours: b.hours, status: b.status, role, roleSource: cached && cached.role ? 'shift' : 'cert', shiftName: cached ? cached.shiftName : '', partial: null };
+          return { id: b.id, name: b.name, start: b.start, end: b.end, hours: b.hours, status: b.status, role, roleSource: cached && cached.role ? 'shift' : 'cert', shiftName: cached ? cached.shiftName : '', scheduleId: cached ? cached.scheduleId : '', partial: null };
         });
         const starts = defs.length ? defs.map(d => d.start) : people.map(p => p.start);
         const ends = defs.length ? defs.map(d => d.end).filter(Boolean) : people.map(p => p.end);
@@ -150,9 +152,29 @@
       if (uncovered) problems.push(`${uncovered} apprentice${uncovered === 1 ? '' : 's'} with no MFR to work under (${app.booked} apprentice${app.booked === 1 ? '' : 's'}, ${mfr.booked} MFR${mfr.booked === 1 ? '' : 's'})`);
       if (app.over) problems.push(`${app.over} more apprentice${app.over === 1 ? '' : 's'} than the shift allows`);
       row.staffing = { mfr, app, uncovered, problems, ok: !mfr.needed && !uncovered, level: mfr.needed || uncovered ? 'short' : app.over ? 'warn' : 'ok', known: row.defs.length > 0 };
+      row.groups = groupsFor(row);
       // does the name split agree with VMS's counts? if not the forms get read
       row.needsCheck = row.defs.length > 0 && row.people.some(p => p.roleSource !== 'shift') && (counted('MFR') !== mfr.booked || counted('Apprentice') !== app.booked);
       return row;
+    }
+
+    // Names under the shift they actually booked - "MFR day 3", "Apprentice" -
+    // matched on the shift definition id the approval form gives us, so its
+    // exact. Until that form is in, a booking sits under the first definition
+    // of its guessed kind. If a booking points at a shift the public page
+    // doesnt list (cancelled, or a definition we cant see) it gets its own
+    // group with whatever name the form had.
+    function groupsFor(row) {
+      const groups = row.defs.map(d => ({ def: d, name: d.name, kind: d.kind, people: [] }));
+      const extra = new Map();
+      row.people.forEach(p => {
+        let g = p.scheduleId ? groups.find(x => norm(x.def.id) === p.scheduleId) : null;
+        if (!g && p.scheduleId && p.shiftName) { if (!extra.has(p.scheduleId)) extra.set(p.scheduleId, { def: null, name: p.shiftName, kind: p.role, people: [] }); g = extra.get(p.scheduleId); }
+        if (!g) g = groups.find(x => x.kind === p.role) || null;
+        if (!g) { const k = 'kind:' + p.role; if (!extra.has(k)) extra.set(k, { def: null, name: p.role, kind: p.role, people: [] }); g = extra.get(k); }
+        g.people.push(p);
+      });
+      return [...groups, ...extra.values()];
     }
 
     // --- the month
@@ -207,7 +229,7 @@
       return rows;
     }
     function applyRoles(row) {
-      row.people.forEach(p => { const c = formCache.get(p.id); if (c && c.role) { p.role = c.role; p.roleSource = 'shift'; p.shiftName = c.shiftName; roleByName.set(norm(p.name), c.role); } else if (c) { p.shiftName = c.shiftName; p.roleSource = c.error ? 'cert' : 'cert'; } });
+      row.people.forEach(p => { const c = formCache.get(p.id); if (!c) return; p.shiftName = c.shiftName; p.scheduleId = c.scheduleId; if (c.role) { p.role = c.role; p.roleSource = 'shift'; roleByName.set(norm(p.name), c.role); } });
       finalize(row);
       row.needsCheck = false;
     }
@@ -277,6 +299,6 @@
       ]);
     }
 
-    return { COLUMNS, MFR_PER_APPRENTICE, monthRows, resolveRoles, eventRows, finalize, kindOf, roleFromForm, roleByName, formCache, rowCells, toTSV, toWorkbookRows, toXLSX, ymd, hm, dayLabel, today, monthLabel };
+    return { COLUMNS, MFR_PER_APPRENTICE, monthRows, resolveRoles, eventRows, finalize, groupsFor, kindOf, roleFromForm, roleByName, formCache, rowCells, toTSV, toWorkbookRows, toXLSX, ymd, hm, dayLabel, today, monthLabel };
   })();
   D.Schedule = Schedule;

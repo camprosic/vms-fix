@@ -90,19 +90,41 @@
       const d = await VMS.eventDetail(id);
       const title = box.closest('.card')?.querySelector('h3')?.textContent || '';
       const byStatus = {}; d.participants.forEach(p => { byStatus[p.status || '—'] = (byStatus[p.status || '—'] || 0) + 1; });
-      box.innerHTML = `
+      // which shift each person booked: name on the public page's definitions,
+      // matched by id off the booking's approval form (one read per booking,
+      // cached for the session - same cache the Schedule tab uses)
+      const pub = pubCache.get(id) || null;
+      const defById = new Map((pub && pub.shifts ? pub.shifts : []).map(x => [norm(x.id), x]));
+      const shiftOf = s => { const c = Schedule.formCache.get(s.id); if (!c) return null; const def = defById.get(c.scheduleId); return def ? def.name : (c.shiftName || null); };
+      const bookedBy = new Map(); d.shifts.forEach(s => { if (!isCancelledStatus(s.status)) bookedBy.set(norm(s.name), s); });
+      const paint = () => {
+        const groups = new Map();
+        d.shifts.forEach(s => { const k = shiftOf(s) || (Schedule.formCache.has(s.id) ? 'Shift not on the public page' : '…'); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(s); });
+        const order = [...groups.keys()].sort((a, b) => (a === '…') - (b === '…') || a.localeCompare(b));
+        box.innerHTML = `
         ${d.description ? `<p class="muted" style="margin:0 0 8px">${esc(d.description)}</p>` : ''}
         <div class="bar"><b>Sign-ups (${d.participants.length})</b> ${Object.entries(byStatus).map(([k, v]) => statusPill(`${k}: ${v}`)).join(' ')}</div>
-        ${d.participants.length ? `<div class="tbl"><table><thead><tr><th>Volunteer</th><th>Status</th><th>Signed up</th><th class="n">Hours</th><th class="n">Pending</th></tr></thead><tbody>
-          ${d.participants.map(p => `<tr><td>${esc(p.name)}</td><td>${statusPill(p.status)}</td><td>${esc(fmtD(p.signedUp))}</td><td class="n">${p.hours || ''}</td><td class="n">${p.pendingHours || ''}</td></tr>`).join('')}
+        ${d.participants.length ? `<div class="tbl"><table><thead><tr><th>Volunteer</th><th>Status</th><th>Booked shift</th><th>Signed up</th><th class="n">Hours</th><th class="n">Pending</th></tr></thead><tbody>
+          ${d.participants.map(p => { const b = bookedBy.get(norm(p.name)); const sh = b ? shiftOf(b) : null; return `<tr><td>${esc(p.name)}</td><td>${statusPill(p.status)}</td><td>${b ? (sh ? esc(sh) : '<span class="muted">…</span>') : '<span class="muted">no shift booked</span>'}</td><td>${esc(fmtD(p.signedUp))}</td><td class="n">${p.hours || ''}</td><td class="n">${p.pendingHours || ''}</td></tr>`; }).join('')}
         </tbody></table></div>` : '<div class="muted">Nobody has signed up yet.</div>'}
-        ${d.shifts.length ? `<div class="bar" style="margin-top:12px"><b>Reported shifts (${d.shifts.length})</b></div><div class="tbl"><table><thead><tr><th>Volunteer</th><th>Start</th><th class="n">Hours</th><th>Status</th></tr></thead><tbody>
-          ${d.shifts.map(s => `<tr><td>${esc(s.name)}</td><td>${esc(fmtDT(s.start))}</td><td class="n">${s.hours || ''}</td><td>${statusPill(s.status)}${/pending/i.test(s.status) ? ` <button class="btn ap-go" data-approve="${esc(title)}" title="Open this event's pending shifts on the Hours tab">Approve…</button>` : ''}</td></tr>`).join('')}
+        ${d.shifts.length ? `<div class="bar" style="margin-top:12px"><b>Booked shifts (${d.shifts.length})</b>${d.shifts.some(x => !Schedule.formCache.has(x.id)) ? '<span class="muted" id="d7-shiftprog"></span>' : ''}</div><div class="tbl"><table><thead><tr><th>Shift</th><th>Volunteer</th><th>Start</th><th class="n">Hours</th><th>Status</th></tr></thead><tbody>
+          ${order.map(k => groups.get(k).sort((a, b) => (a.start?.getTime() || 0) - (b.start?.getTime() || 0) || norm(a.name).localeCompare(norm(b.name))).map((s, i) => `<tr>${i === 0 ? `<td rowspan="${groups.get(k).length}"><b>${k === '…' ? '<span class="muted">checking…</span>' : esc(k)}</b>${k !== '…' && defById.size ? `<div class="muted" style="font-size:11.5px">${[...defById.values()].filter(x => x.name === k).map(x => `${x.booked}${x.max !== null ? '/' + x.max : ''} booked`).join('')}</div>` : ''}</td>` : ''}<td>${esc(s.name)}</td><td>${esc(fmtDT(s.start))}</td><td class="n">${s.hours || ''}</td><td>${statusPill(s.status)}${/pending/i.test(s.status) ? ` <button class="btn ap-go" data-approve="${esc(title)}" title="Open this event's pending shifts on the Hours tab">Approve…</button>` : ''}</td></tr>`).join('')).join('')}
         </tbody></table></div>` : ''}`;
-      // Pending rows jump to the Hours tab filtered to this event so you can
-      // approve an event right after looking at who was actually on it.
-      box.querySelectorAll('[data-approve]').forEach(b => b.addEventListener('click', () => { state.pendingSearch = b.dataset.approve; state.tab = 'hours'; state.q = ''; render(); }));
+        // Pending rows jump to the Hours tab filtered to this event so you can
+        // approve an event right after looking at who was actually on it.
+        box.querySelectorAll('[data-approve]').forEach(b => b.addEventListener('click', () => { state.pendingSearch = b.dataset.approve; state.tab = 'hours'; state.q = ''; render(); }));
+      };
+      paint();
+      // now read the forms we havent seen and repaint as they land
+      const todo = d.shifts.filter(s => !Schedule.formCache.has(s.id)).map(s => s.id);
+      if (todo.length) {
+        if (!pubCache.has(id)) { const pid = (await VMS.publicIdsFor([id]).catch(() => new Map())).get(id); pubCache.set(id, pid ? await VMS.publicEvent(pid).catch(() => null) : null); const p2 = pubCache.get(id); defById.clear(); (p2 && p2.shifts ? p2.shifts : []).forEach(x => defById.set(norm(x.id), x)); }
+        let done = 0, i = 0;
+        await Promise.all(Array.from({ length: 3 }, async () => { while (i < todo.length) { const bid = todo[i++]; await Schedule.roleFromForm(bid); done++; if (state.openEvent !== id || !stillCurrent('events')) return; const n = box.querySelector('#d7-shiftprog'); if (n) n.textContent = ` checking booked shifts… ${done} of ${todo.length}`; if (done % 3 === 0 || done === todo.length) paint(); } }));
+        if (state.openEvent === id && stillCurrent('events')) paint();
+      }
     } catch (e) { box.innerHTML = `<div class="err">${esc(e.message || e)}</div>`; }
   }
+  const isCancelledStatus = s => /cancel/i.test(s || '');
   const CSS_ID = s => String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
   TABS.push({ id: 'events', label: 'Events', render: renderEvents });

@@ -445,9 +445,11 @@
       let out = null;
       try {
         const f = await Approvals.loadForm(bookingId);
-        const kind = kindOf((f.scheduleName || '').split(' - ')[0]);
-        out = { role: kind === 'Other' ? null : kind, shiftName: f.scheduleName || '' };
-      } catch (e) { out = { role: null, shiftName: '', error: e.message || String(e) }; }
+        // "MFR day 3 - Norfolk county fair": the shift name is the part before " - <event>"
+        const shiftName = (f.scheduleName || '').replace(/\s+-\s+[^-]*$/, '').trim() || f.scheduleName || '';
+        const kind = kindOf(shiftName);
+        out = { role: kind === 'Other' ? null : kind, shiftName, scheduleId: norm(f.scheduleId || '') };
+      } catch (e) { out = { role: null, shiftName: '', scheduleId: '', error: e.message || String(e) }; }
       formCache.set(bookingId, out);
       return out;
     }
@@ -474,7 +476,7 @@
         const people = bookings.filter(b => b.day === day).map(b => {
           const cached = formCache.get(b.id);
           const role = cached && cached.role ? cached.role : certRole(b.name, ctx.certs);
-          return { id: b.id, name: b.name, start: b.start, end: b.end, hours: b.hours, status: b.status, role, roleSource: cached && cached.role ? 'shift' : 'cert', shiftName: cached ? cached.shiftName : '', partial: null };
+          return { id: b.id, name: b.name, start: b.start, end: b.end, hours: b.hours, status: b.status, role, roleSource: cached && cached.role ? 'shift' : 'cert', shiftName: cached ? cached.shiftName : '', scheduleId: cached ? cached.scheduleId : '', partial: null };
         });
         const starts = defs.length ? defs.map(d => d.start) : people.map(p => p.start);
         const ends = defs.length ? defs.map(d => d.end).filter(Boolean) : people.map(p => p.end);
@@ -535,9 +537,29 @@
       if (uncovered) problems.push(`${uncovered} apprentice${uncovered === 1 ? '' : 's'} with no MFR to work under (${app.booked} apprentice${app.booked === 1 ? '' : 's'}, ${mfr.booked} MFR${mfr.booked === 1 ? '' : 's'})`);
       if (app.over) problems.push(`${app.over} more apprentice${app.over === 1 ? '' : 's'} than the shift allows`);
       row.staffing = { mfr, app, uncovered, problems, ok: !mfr.needed && !uncovered, level: mfr.needed || uncovered ? 'short' : app.over ? 'warn' : 'ok', known: row.defs.length > 0 };
+      row.groups = groupsFor(row);
       // does the name split agree with VMS's counts? if not the forms get read
       row.needsCheck = row.defs.length > 0 && row.people.some(p => p.roleSource !== 'shift') && (counted('MFR') !== mfr.booked || counted('Apprentice') !== app.booked);
       return row;
+    }
+
+    // Names under the shift they actually booked - "MFR day 3", "Apprentice" -
+    // matched on the shift definition id the approval form gives us, so its
+    // exact. Until that form is in, a booking sits under the first definition
+    // of its guessed kind. If a booking points at a shift the public page
+    // doesnt list (cancelled, or a definition we cant see) it gets its own
+    // group with whatever name the form had.
+    function groupsFor(row) {
+      const groups = row.defs.map(d => ({ def: d, name: d.name, kind: d.kind, people: [] }));
+      const extra = new Map();
+      row.people.forEach(p => {
+        let g = p.scheduleId ? groups.find(x => norm(x.def.id) === p.scheduleId) : null;
+        if (!g && p.scheduleId && p.shiftName) { if (!extra.has(p.scheduleId)) extra.set(p.scheduleId, { def: null, name: p.shiftName, kind: p.role, people: [] }); g = extra.get(p.scheduleId); }
+        if (!g) g = groups.find(x => x.kind === p.role) || null;
+        if (!g) { const k = 'kind:' + p.role; if (!extra.has(k)) extra.set(k, { def: null, name: p.role, kind: p.role, people: [] }); g = extra.get(k); }
+        g.people.push(p);
+      });
+      return [...groups, ...extra.values()];
     }
 
     // --- the month
@@ -592,7 +614,7 @@
       return rows;
     }
     function applyRoles(row) {
-      row.people.forEach(p => { const c = formCache.get(p.id); if (c && c.role) { p.role = c.role; p.roleSource = 'shift'; p.shiftName = c.shiftName; roleByName.set(norm(p.name), c.role); } else if (c) { p.shiftName = c.shiftName; p.roleSource = c.error ? 'cert' : 'cert'; } });
+      row.people.forEach(p => { const c = formCache.get(p.id); if (!c) return; p.shiftName = c.shiftName; p.scheduleId = c.scheduleId; if (c.role) { p.role = c.role; p.roleSource = 'shift'; roleByName.set(norm(p.name), c.role); } });
       finalize(row);
       row.needsCheck = false;
     }
@@ -662,7 +684,7 @@
       ]);
     }
 
-    return { COLUMNS, MFR_PER_APPRENTICE, monthRows, resolveRoles, eventRows, finalize, kindOf, roleFromForm, roleByName, formCache, rowCells, toTSV, toWorkbookRows, toXLSX, ymd, hm, dayLabel, today, monthLabel };
+    return { COLUMNS, MFR_PER_APPRENTICE, monthRows, resolveRoles, eventRows, finalize, groupsFor, kindOf, roleFromForm, roleByName, formCache, rowCells, toTSV, toWorkbookRows, toXLSX, ymd, hm, dayLabel, today, monthLabel };
   })();
   D.Schedule = Schedule;
 
@@ -1224,20 +1246,42 @@
       const d = await VMS.eventDetail(id);
       const title = box.closest('.card')?.querySelector('h3')?.textContent || '';
       const byStatus = {}; d.participants.forEach(p => { byStatus[p.status || '—'] = (byStatus[p.status || '—'] || 0) + 1; });
-      box.innerHTML = `
+      // which shift each person booked: name on the public page's definitions,
+      // matched by id off the booking's approval form (one read per booking,
+      // cached for the session - same cache the Schedule tab uses)
+      const pub = pubCache.get(id) || null;
+      const defById = new Map((pub && pub.shifts ? pub.shifts : []).map(x => [norm(x.id), x]));
+      const shiftOf = s => { const c = Schedule.formCache.get(s.id); if (!c) return null; const def = defById.get(c.scheduleId); return def ? def.name : (c.shiftName || null); };
+      const bookedBy = new Map(); d.shifts.forEach(s => { if (!isCancelledStatus(s.status)) bookedBy.set(norm(s.name), s); });
+      const paint = () => {
+        const groups = new Map();
+        d.shifts.forEach(s => { const k = shiftOf(s) || (Schedule.formCache.has(s.id) ? 'Shift not on the public page' : '…'); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(s); });
+        const order = [...groups.keys()].sort((a, b) => (a === '…') - (b === '…') || a.localeCompare(b));
+        box.innerHTML = `
         ${d.description ? `<p class="muted" style="margin:0 0 8px">${esc(d.description)}</p>` : ''}
         <div class="bar"><b>Sign-ups (${d.participants.length})</b> ${Object.entries(byStatus).map(([k, v]) => statusPill(`${k}: ${v}`)).join(' ')}</div>
-        ${d.participants.length ? `<div class="tbl"><table><thead><tr><th>Volunteer</th><th>Status</th><th>Signed up</th><th class="n">Hours</th><th class="n">Pending</th></tr></thead><tbody>
-          ${d.participants.map(p => `<tr><td>${esc(p.name)}</td><td>${statusPill(p.status)}</td><td>${esc(fmtD(p.signedUp))}</td><td class="n">${p.hours || ''}</td><td class="n">${p.pendingHours || ''}</td></tr>`).join('')}
+        ${d.participants.length ? `<div class="tbl"><table><thead><tr><th>Volunteer</th><th>Status</th><th>Booked shift</th><th>Signed up</th><th class="n">Hours</th><th class="n">Pending</th></tr></thead><tbody>
+          ${d.participants.map(p => { const b = bookedBy.get(norm(p.name)); const sh = b ? shiftOf(b) : null; return `<tr><td>${esc(p.name)}</td><td>${statusPill(p.status)}</td><td>${b ? (sh ? esc(sh) : '<span class="muted">…</span>') : '<span class="muted">no shift booked</span>'}</td><td>${esc(fmtD(p.signedUp))}</td><td class="n">${p.hours || ''}</td><td class="n">${p.pendingHours || ''}</td></tr>`; }).join('')}
         </tbody></table></div>` : '<div class="muted">Nobody has signed up yet.</div>'}
-        ${d.shifts.length ? `<div class="bar" style="margin-top:12px"><b>Reported shifts (${d.shifts.length})</b></div><div class="tbl"><table><thead><tr><th>Volunteer</th><th>Start</th><th class="n">Hours</th><th>Status</th></tr></thead><tbody>
-          ${d.shifts.map(s => `<tr><td>${esc(s.name)}</td><td>${esc(fmtDT(s.start))}</td><td class="n">${s.hours || ''}</td><td>${statusPill(s.status)}${/pending/i.test(s.status) ? ` <button class="btn ap-go" data-approve="${esc(title)}" title="Open this event's pending shifts on the Hours tab">Approve…</button>` : ''}</td></tr>`).join('')}
+        ${d.shifts.length ? `<div class="bar" style="margin-top:12px"><b>Booked shifts (${d.shifts.length})</b>${d.shifts.some(x => !Schedule.formCache.has(x.id)) ? '<span class="muted" id="d7-shiftprog"></span>' : ''}</div><div class="tbl"><table><thead><tr><th>Shift</th><th>Volunteer</th><th>Start</th><th class="n">Hours</th><th>Status</th></tr></thead><tbody>
+          ${order.map(k => groups.get(k).sort((a, b) => (a.start?.getTime() || 0) - (b.start?.getTime() || 0) || norm(a.name).localeCompare(norm(b.name))).map((s, i) => `<tr>${i === 0 ? `<td rowspan="${groups.get(k).length}"><b>${k === '…' ? '<span class="muted">checking…</span>' : esc(k)}</b>${k !== '…' && defById.size ? `<div class="muted" style="font-size:11.5px">${[...defById.values()].filter(x => x.name === k).map(x => `${x.booked}${x.max !== null ? '/' + x.max : ''} booked`).join('')}</div>` : ''}</td>` : ''}<td>${esc(s.name)}</td><td>${esc(fmtDT(s.start))}</td><td class="n">${s.hours || ''}</td><td>${statusPill(s.status)}${/pending/i.test(s.status) ? ` <button class="btn ap-go" data-approve="${esc(title)}" title="Open this event's pending shifts on the Hours tab">Approve…</button>` : ''}</td></tr>`).join('')).join('')}
         </tbody></table></div>` : ''}`;
-      // Pending rows jump to the Hours tab filtered to this event so you can
-      // approve an event right after looking at who was actually on it.
-      box.querySelectorAll('[data-approve]').forEach(b => b.addEventListener('click', () => { state.pendingSearch = b.dataset.approve; state.tab = 'hours'; state.q = ''; render(); }));
+        // Pending rows jump to the Hours tab filtered to this event so you can
+        // approve an event right after looking at who was actually on it.
+        box.querySelectorAll('[data-approve]').forEach(b => b.addEventListener('click', () => { state.pendingSearch = b.dataset.approve; state.tab = 'hours'; state.q = ''; render(); }));
+      };
+      paint();
+      // now read the forms we havent seen and repaint as they land
+      const todo = d.shifts.filter(s => !Schedule.formCache.has(s.id)).map(s => s.id);
+      if (todo.length) {
+        if (!pubCache.has(id)) { const pid = (await VMS.publicIdsFor([id]).catch(() => new Map())).get(id); pubCache.set(id, pid ? await VMS.publicEvent(pid).catch(() => null) : null); const p2 = pubCache.get(id); defById.clear(); (p2 && p2.shifts ? p2.shifts : []).forEach(x => defById.set(norm(x.id), x)); }
+        let done = 0, i = 0;
+        await Promise.all(Array.from({ length: 3 }, async () => { while (i < todo.length) { const bid = todo[i++]; await Schedule.roleFromForm(bid); done++; if (state.openEvent !== id || !stillCurrent('events')) return; const n = box.querySelector('#d7-shiftprog'); if (n) n.textContent = ` checking booked shifts… ${done} of ${todo.length}`; if (done % 3 === 0 || done === todo.length) paint(); } }));
+        if (state.openEvent === id && stillCurrent('events')) paint();
+      }
     } catch (e) { box.innerHTML = `<div class="err">${esc(e.message || e)}</div>`; }
   }
+  const isCancelledStatus = s => /cancel/i.test(s || '');
   const CSS_ID = s => String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
   TABS.push({ id: 'events', label: 'Events', render: renderEvents });
 
@@ -1319,7 +1363,12 @@
   function schedCells(r) {
     const ev = r.event, st = r.staffing;
     const person = p => `<div class="sc-p${isNoShowOrWait(p.status) ? ' sc-out' : ''}"><span>${esc(p.name)}${p.partial ? '<b>' + esc(p.partial.nameMark) + '</b>' : ''}</span>${p.partial ? `<span class="muted"> · ${esc(p.partial.text)}</span>` : ''}${isNoShowOrWait(p.status) ? ` ${statusPill(p.status)}` : ''}${p.roleSource === 'cert' ? ' <span class="sc-cert" title="From certifications - VMS hasn\'t confirmed the booked shift yet">cert</span>' : ''}</div>`;
-    const names = role => r.people.filter(p => p.role === role).map(person).join('') || '<span class="muted">—</span>';
+    // each shift definition of this kind as its own block: "MFR day 3 · 16:00–23:00 · 3/10" then the names under it
+    const names = kind => {
+      const gs = (r.groups || []).filter(g => g.kind === kind);
+      if (!gs.length) return '<span class="muted">—</span>';
+      return gs.map(g => `<div class="sc-grp"><div class="sc-grph"><b>${esc(g.name)}</b>${g.def ? `<span class="muted"> ${esc(scTime(g.def.start))}–${esc(scTime(g.def.end))}${g.def.max !== null ? ` · ${g.def.booked}/${g.def.max}` : ''}</span>` : ''}</div>${g.people.map(person).join('') || '<div class="muted">nobody yet</div>'}</div>`).join('');
+    };
     const defs = r.defs.length ? r.defs.map(d => `<div class="sc-def"><b>${esc(d.name)}</b> ${esc(scTime(d.start))}–${esc(scTime(d.end))}${d.max !== null ? ` · <span class="n">${d.booked}/${d.max}</span>` : ` · ${d.booked} booked`}${d.needed > 0 ? ` ${pill(`${d.needed} needed`, 'red')}` : d.needed !== null && d.needed < 0 ? ` ${pill(`over by ${-d.needed}`, 'amber')}` : ''}</div>`).join('') : '<span class="muted">No shift definitions on the public page</span>';
     const addr = ev.address ? [ev.address.street, [ev.address.city, ev.address.province].filter(Boolean).join(', ') + (ev.address.postal ? `  ${ev.address.postal}` : '')].filter(x => x && x.trim()) : [];
     const contact = r.contact ? `<div><b>${esc(r.contact.name || '')}</b></div>${r.contact.phone ? `<div><a href="tel:${esc(r.contact.phone)}">${esc(r.contact.phone)}</a></div>` : ''}${r.contact.email ? `<div><a href="mailto:${esc(r.contact.email)}">${esc(r.contact.email)}</a></div>` : ''}${r.organizer && r.organizer.organization ? `<div class="muted">${esc(r.organizer.organization)}</div>` : ''}${r.request && r.request.onSite ? `<div class="muted sc-onsite" title="From the event request: what the organizer says is on site">${esc(onSiteText(r.request.onSite))}</div>` : ''}`
@@ -1394,6 +1443,9 @@
 #d0007-root .sc-links{font-size:12px;margin-top:4px}
 #d0007-root .sc-staff{margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
 #d0007-root .sc-def{white-space:nowrap}
+#d0007-root .sc-grp{margin-bottom:8px}
+#d0007-root .sc-grp:last-child{margin-bottom:0}
+#d0007-root .sc-grph{font-size:12px;border-bottom:1px solid #e7ebe7;margin-bottom:3px;white-space:nowrap}
 #d0007-root .sc-p{line-height:1.5}
 #d0007-root .sc-p b{color:#9a2b1d;margin-left:1px}
 #d0007-root .sc-out{opacity:.6}
