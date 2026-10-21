@@ -41,6 +41,9 @@
 #d0007-root .track{flex:1 1 140px;height:8px;background:#e6ebe6;border-radius:999px;overflow:hidden;min-width:100px}
 #d0007-root .track i{display:block;height:100%;background:#2f6b3a}
 #d0007-root .track i.red{background:#c2452f}
+#d0007-root .track i.amber{background:#d9a441}
+#d0007-root .staff-l{min-width:130px}
+#d0007-root .staff-pills{margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
 #d0007-root .detail{margin-top:10px;border-top:1px dashed #dfe5e0;padding-top:10px}
 #d0007-root table{width:100%;border-collapse:collapse;background:#fff;font-size:13px}
 #d0007-root th,#d0007-root td{text-align:left;padding:7px 8px;border-bottom:1px solid #e7ebe7;vertical-align:top}

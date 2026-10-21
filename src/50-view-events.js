@@ -1,30 +1,61 @@
   // ---- Events ----
-  // The home page already works out "N volunteers still needed" per event card.
-  // What it doesnt do is show that across all your events on one screen, which
-  // is the single most useful number in the entire system. So, this.
+  // The home page works out "N volunteers still needed" per event card, as one
+  // number. One number is useless to us: 7 bodies on a Ti-Cats game where 6 are
+  // apprentices isnt covered, its a problem. So this counts MFRs and
+  // apprentices seperately, off the shift definitions on the public event page
+  // (the only place VMS shows them), and applies the rule VMS doesnt have: an
+  // apprentice needs an MFR to work under (Schedule.MFR_PER_APPRENTICE).
+  //
+  // Staffing per event, both shift types, across every day of the event.
+  function eventStaffing(pub) {
+    if (!pub || !pub.shifts || !pub.shifts.length) return null;
+    const live = pub.shifts.filter(d => !d.cancelled);
+    const sum = (kind, f) => live.filter(d => Schedule.kindOf(d.name) === kind).reduce((a, d) => a + (f(d) || 0), 0);
+    const hasMax = kind => live.some(d => Schedule.kindOf(d.name) === kind && d.max !== null);
+    const mfr = { booked: sum('MFR', d => d.booked), max: hasMax('MFR') ? sum('MFR', d => d.max) : null };
+    const app = { booked: sum('Apprentice', d => d.booked), max: hasMax('Apprentice') ? sum('Apprentice', d => d.max) : null };
+    mfr.needed = mfr.max === null ? 0 : Math.max(0, mfr.max - mfr.booked);
+    app.over = app.max === null ? 0 : Math.max(0, app.booked - app.max);
+    const uncovered = Math.max(0, app.booked - mfr.booked * Schedule.MFR_PER_APPRENTICE);
+    const problems = [];
+    if (mfr.needed) problems.push(`${mfr.needed} MFR${mfr.needed === 1 ? '' : 's'} needed`);
+    if (uncovered) problems.push(`${uncovered} apprentice${uncovered === 1 ? '' : 's'} with no MFR`);
+    if (app.over) problems.push(`${app.over} apprentice${app.over === 1 ? '' : 's'} over the limit`);
+    return { mfr, app, uncovered, problems, level: mfr.needed || uncovered ? 'short' : app.over ? 'warn' : 'ok', days: new Set(live.map(d => Schedule.ymd(d.start))).size };
+  }
+  const pubCache = new Map();   // event id -> public page, for the session
+  async function staffingFor(events) {
+    const ids = events.map(e => e.id).filter(id => !pubCache.has(id));
+    const pubIds = ids.length ? await VMS.publicIdsFor(ids).catch(() => new Map()) : new Map();
+    let i = 0;
+    await Promise.all(Array.from({ length: 4 }, async () => { while (i < ids.length) { const id = ids[i++]; const pid = pubIds.get(id); pubCache.set(id, pid ? await VMS.publicEvent(pid).catch(() => null) : null); } }));
+    return new Map(events.map(e => [e.id, eventStaffing(pubCache.get(e.id))]));
+  }
   async function renderEvents() {
     const [ev, up] = await Promise.all([VMS.groupEvents(), VMS.upcomingEngagements().catch(() => [])]);
     if (!stillCurrent('events')) return;
-    const staffing = new Map(up.map(e => [e.id, e]));
+    const vms = new Map(up.map(e => [e.id, e]));
     const list = ev[state.evSet] || [];
     const q = state.q;
     const rows = list.filter(e => matches(q, e.title, e.location, e.program, e.status));
-    const upcomingAll = ev.upcoming || [];
-    const gaps = upcomingAll.map(e => staffing.get(e.id)).filter(s => s && s.needed > 0);
-    const totalNeeded = gaps.reduce((a, s) => a + s.needed, 0);
+    const upcomingAll = [...(ev.current || []), ...(ev.upcoming || [])];
+    const staffing = await staffingFor(state.evSet === 'past' || state.evSet === 'adhoc' ? rows : upcomingAll);
+    if (!stillCurrent('events')) return;
+    const st = upcomingAll.map(e => staffing.get(e.id)).filter(Boolean);
+    const shortMfr = st.filter(s => s.mfr.needed > 0), uncovered = st.filter(s => s.uncovered > 0);
     const html = `<div class="wrap">
       <div class="stats">
-        <div class="stat"><b>${upcomingAll.length}</b><span>upcoming events</span></div>
-        <div class="stat ${gaps.length ? 'warn' : ''}"><b>${gaps.length}</b><span>short of minimum</span></div>
-        <div class="stat ${totalNeeded ? 'warn' : ''}"><b>${totalNeeded}</b><span>volunteers still needed</span></div>
-        <div class="stat"><b>${(ev.current || []).length}</b><span>in progress</span></div>
+        <div class="stat"><b>${upcomingAll.length}</b><span>upcoming + in progress</span></div>
+        <div class="stat ${shortMfr.length ? 'warn' : ''}"><b>${shortMfr.reduce((a, s) => a + s.mfr.needed, 0)}</b><span>MFRs needed across ${shortMfr.length} event${shortMfr.length === 1 ? '' : 's'}</span></div>
+        <div class="stat ${uncovered.length ? 'warn' : ''}"><b>${uncovered.reduce((a, s) => a + s.uncovered, 0)}</b><span>apprentices with no MFR (${uncovered.length} event${uncovered.length === 1 ? '' : 's'})</span></div>
+        <div class="stat"><b>${st.filter(s => s.level === 'ok').length}</b><span>covered</span></div>
       </div>
       <div class="bar">
         <div class="seg">${['upcoming', 'current', 'past', 'adhoc'].map(k => `<button data-set="${k}" class="${state.evSet === k ? 'on' : ''}">${{ upcoming: 'Upcoming', current: 'Current', past: 'Past', adhoc: 'Ad hoc' }[k]} (${(ev[k] || []).length})</button>`).join('')}</div>
         <input type="search" placeholder="Filter events…" value="${esc(q)}">
       </div>
       ${rows.length ? '' : '<div class="card muted">No events in this list.</div>'}
-      ${rows.map(e => eventCard(e, staffing.get(e.id))).join('')}
+      ${rows.map(e => eventCard(e, staffing.get(e.id), vms.get(e.id))).join('')}
     </div>`;
     main.innerHTML = html;
     main.querySelectorAll('[data-set]').forEach(b => b.addEventListener('click', () => { state.evSet = b.dataset.set; state.openEvent = null; render(); }));
@@ -32,12 +63,15 @@
     main.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => { state.openEvent = state.openEvent === b.dataset.open ? null : b.dataset.open; renderEvents(); }));
     if (state.openEvent) loadDetail(state.openEvent);
   }
-  function eventCard(e, s) {
+  function eventCard(e, st, s) {
     const open = state.openEvent === e.id;
     let staff = '';
-    if (s) {
-      const pct = s.minimum ? Math.min(100, Math.round(100 * s.signedUp / s.minimum)) : 100;
-      staff = `<div class="staff"><span><b>${s.signedUp}</b> signed up${s.minimum ? ` · min <b>${s.minimum}</b>` : ''}</span><div class="track"><i class="${s.needed ? 'red' : ''}" style="width:${pct}%"></i></div>${s.needed ? pill(`${s.needed} still needed`, 'red') : pill('Minimum met', 'green')}</div>`;
+    if (st) {
+      const bar = (label, x) => { const pct = x.max ? Math.min(100, Math.round(100 * x.booked / x.max)) : 100; return `<div class="staff"><span class="staff-l"><b>${esc(label)}</b> ${x.booked}${x.max !== null ? ` of ${x.max}` : ' booked'}</span><div class="track"><i class="${x.needed ? 'red' : x.over ? 'amber' : ''}" style="width:${pct}%"></i></div></div>`; };
+      staff = `${bar('MFR', st.mfr)}${bar('Apprentice', st.app)}<div class="staff-pills">${st.level === 'ok' ? pill('Covered', 'green') : ''}${st.problems.map(p => pill(p, st.level === 'short' ? 'red' : 'amber')).join(' ')}${st.days > 1 ? `<span class="muted"> · ${st.days} days</span>` : ''}</div>`;
+    } else if (s) {
+      // no shift definitions to go on (no public page) - fall back to the one number VMS gives
+      staff = `<div class="staff"><span><b>${s.signedUp}</b> signed up${s.minimum ? ` · min <b>${s.minimum}</b>` : ''}</span>${s.needed ? pill(`${s.needed} still needed`, 'red') : ''}<span class="muted">no shift breakdown in VMS for this one</span></div>`;
     }
     return `<div class="card">
       <div class="t"><h3>${esc(e.title)}</h3><span class="when">${esc(fmtDT(e.start))}</span></div>

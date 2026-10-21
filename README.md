@@ -86,10 +86,15 @@ Where each column comes from:
   lead's approval, so for an already-approved event the column says so instead. (That's a VMS gap worth raising with
   national: the one phone number you need on the day is hidden once the event is approved.)
 - **Medical First Responders / Apprentice** are the people booked on that day, split by the shift they booked
-  ("MFR" or "Apprentice" — every D0007 event defines exactly those two). The booked shift is only visible through the
-  booking's approval form, so the tab first splits by whether VMS has a current MFR certification for the person,
-  compares those counts with the shifts' booked counts, and only reads the forms for days where they disagree.
+  ("MFR" or "Apprentice" — every D0007 event defines exactly those two). VMS only shows which shift a booking is on
+  inside that booking's approval form, so the tab reads one form per booking (three at a time, remembered for the
+  session) and moves people into the right column as they come back. Until a form is in, the split is a guess from
+  whether VMS has a current MFR certification on file, and the name carries a small "cert" tag so you know.
   Someone whose booked window differs from the shift gets a `*` and a "**16:30 to End" note, like the sheet.
+- **Staffing** is judged per shift type, not as one number: MFRs booked against the MFR shift's max, apprentices
+  against theirs, plus the unit rule VMS has no idea about — an apprentice needs an MFR to work under
+  (`MFR_PER_APPRENTICE` in `src/21-schedule.js`, one each). "7 bodies" on a game where 5 are apprentices is flagged,
+  not called covered. The Events tab uses the same rule.
 
 ## Known limits (schedule)
 
