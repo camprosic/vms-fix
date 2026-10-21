@@ -76,7 +76,12 @@
   function schedCells(r) {
     const ev = r.event, st = r.staffing;
     const person = p => `<div class="sc-p${isNoShowOrWait(p.status) ? ' sc-out' : ''}"><span>${esc(p.name)}${p.partial ? '<b>' + esc(p.partial.nameMark) + '</b>' : ''}</span>${p.partial ? `<span class="muted"> · ${esc(p.partial.text)}</span>` : ''}${isNoShowOrWait(p.status) ? ` ${statusPill(p.status)}` : ''}${p.roleSource === 'cert' ? ' <span class="sc-cert" title="From certifications - VMS hasn\'t confirmed the booked shift yet">cert</span>' : ''}</div>`;
-    const names = role => r.people.filter(p => p.role === role).map(person).join('') || '<span class="muted">—</span>';
+    // each shift definition of this kind as its own block: "MFR day 3 · 16:00–23:00 · 3/10" then the names under it
+    const names = kind => {
+      const gs = (r.groups || []).filter(g => g.kind === kind);
+      if (!gs.length) return '<span class="muted">—</span>';
+      return gs.map(g => `<div class="sc-grp"><div class="sc-grph"><b>${esc(g.name)}</b>${g.def ? `<span class="muted"> ${esc(scTime(g.def.start))}–${esc(scTime(g.def.end))}${g.def.max !== null ? ` · ${g.def.booked}/${g.def.max}` : ''}</span>` : ''}</div>${g.people.map(person).join('') || '<div class="muted">nobody yet</div>'}</div>`).join('');
+    };
     const defs = r.defs.length ? r.defs.map(d => `<div class="sc-def"><b>${esc(d.name)}</b> ${esc(scTime(d.start))}–${esc(scTime(d.end))}${d.max !== null ? ` · <span class="n">${d.booked}/${d.max}</span>` : ` · ${d.booked} booked`}${d.needed > 0 ? ` ${pill(`${d.needed} needed`, 'red')}` : d.needed !== null && d.needed < 0 ? ` ${pill(`over by ${-d.needed}`, 'amber')}` : ''}</div>`).join('') : '<span class="muted">No shift definitions on the public page</span>';
     const addr = ev.address ? [ev.address.street, [ev.address.city, ev.address.province].filter(Boolean).join(', ') + (ev.address.postal ? `  ${ev.address.postal}` : '')].filter(x => x && x.trim()) : [];
     const contact = r.contact ? `<div><b>${esc(r.contact.name || '')}</b></div>${r.contact.phone ? `<div><a href="tel:${esc(r.contact.phone)}">${esc(r.contact.phone)}</a></div>` : ''}${r.contact.email ? `<div><a href="mailto:${esc(r.contact.email)}">${esc(r.contact.email)}</a></div>` : ''}${r.organizer && r.organizer.organization ? `<div class="muted">${esc(r.organizer.organization)}</div>` : ''}${r.request && r.request.onSite ? `<div class="muted sc-onsite" title="From the event request: what the organizer says is on site">${esc(onSiteText(r.request.onSite))}</div>` : ''}`
@@ -151,6 +156,9 @@
 #d0007-root .sc-links{font-size:12px;margin-top:4px}
 #d0007-root .sc-staff{margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
 #d0007-root .sc-def{white-space:nowrap}
+#d0007-root .sc-grp{margin-bottom:8px}
+#d0007-root .sc-grp:last-child{margin-bottom:0}
+#d0007-root .sc-grph{font-size:12px;border-bottom:1px solid #e7ebe7;margin-bottom:3px;white-space:nowrap}
 #d0007-root .sc-p{line-height:1.5}
 #d0007-root .sc-p b{color:#9a2b1d;margin-left:1px}
 #d0007-root .sc-out{opacity:.6}

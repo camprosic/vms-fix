@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Cam's VMS Console
 // @namespace    sja-hamilton-d0007
-// @version      0.3.0
+// @version      0.3.1
 // @description  D0007 front end for the SJA VMS portal: events and staffing, a copy-ready event schedule, roster, hours and certifications, and shift-hour approvals. Runs as whoever is signed in.
 // @match        https://volunteer-sja.powerappsportals.com/*
 // @homepageURL  https://github.com/camprosic/vms-fix
