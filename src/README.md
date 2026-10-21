@@ -8,9 +8,10 @@ Everything lives inside one IIFE, so a `const` declared in an earlier file is vi
 | `00-header.js` | Userscript header, config (`GROUP_ID`, `SITE_ID`, `TZ`, `CERT_WARN_DAYS`), helpers (`esc`, `el`, `toDate`, `fmtDT`, `fmtD`, `num`, `r2`, `norm`, `daysUntil`, `decodeEntities`, `parseCSV`), the `D` registry and the `TABS` list |
 | `10-store.js` | `Store` — localStorage-backed unit-side data with export/import. Sections: `schedule`, `members`, `settings` |
 | `20-vms.js` | `VMS` — read-only data layer. `upcomingEngagements()`, `groupEvents()`, `eventDetail(id)`, `roster()`, `hours(win)`, `certifications()`, `clear()`. Internals: `getToken()`, `getDoc()`, `getText()`, `gridsIn(doc)`, `subgridRows(grid, opts)`, `flatten(record)` |
+| `21-schedule.js` | `Schedule` — the monthly Event Schedule rows: `monthRows(year, month)` (VMS events + shifts, one row per event day, `Store` overrides merged), `deriveDay(shifts)`, `memberInfo(name, {certs, members})`, `withOverrides(row)`, `formatName(p)`, `toTSV(rows)`, `toWorkbookRows(rows)`, `toXLSX(rows, {sheetName})` (writes the .xlsx itself; no library) |
 | `30-styles.js` | Base CSS, scoped under `#d0007-root`. Screens push their own rules onto `CSS_PARTS` instead of editing it |
 | `40-ui-core.js` | `state`, `root`/`main`, `pill()`, `statusPill()`, `sortRows()`, `th()`, `bindSort()`, `matches()`, `render()` |
-| `5x-view-*.js` | One screen per file. Each ends with `TABS.push({ id, label, render })` |
+| `5x-view-*.js` | One screen per file. Each ends with `TABS.push({ id, label, render })`. `51-view-schedule.js` is the Schedule tab (inline edits go to `Store.schedule`, keyed `eventId|YYYY-MM-DD`), `52-view-roster.js` also holds the member tag form (`Store.members`, keyed `norm(name)`), `56-view-data.js` is export/import/reset for `Store` |
 | `60-shell.js` | `downloadCSV()`, `addStyles()`, `open()`, `close()` |
 | `90-footer.js` | Exposes `window.D0007`, adds the launcher button and the Tampermonkey menu entry |
 
