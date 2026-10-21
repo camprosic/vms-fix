@@ -1,0 +1,82 @@
+{
+ "engagements": [
+  {
+   "City": "Hamilton, ON",
+   "Desc": "Tiger Cat CFL Game",
+   "EndDate": "2026-10-24",
+   "EndDateFull": "Sat, 24 Oct 2026 23:00:00 GMT",
+   "EndDateString": "Saturday, October 24, 2026",
+   "LocationTitle": "Hamilton Stadium",
+   "LocationTypeName": "On Location",
+   "LocationTypeValue": "844060000",
+   "MinVols": 9,
+   "NumVols": 9,
+   "OppId": "0f51048a-6e24-f111-88b3-70a8a50be077",
+   "Prefs": [
+    ""
+   ],
+   "Program": "First Aid/Medical First Response",
+   "Quals": [
+    ""
+   ],
+   "StartDate": "2026-10-24",
+   "StartDateFull": "Sat, 24 Oct 2026 16:00:00 GMT",
+   "StartDateString": "Saturday, October 24, 2026",
+   "StatusCode": "",
+   "Title": "Ti-Cats vs Ottawa Redblacks",
+   "x": "False"
+  },
+  {
+   "City": "Hamilton, ON",
+   "Desc": "A two day event at Confederation Park. Saturday October 31st we will host a 1k, 5k and 10k event. Sunday November 1st we host a half and full marathon along the waterfront trail and into stoney creek.",
+   "EndDate": "2026-10-31",
+   "EndDateFull": "Sat, 31 Oct 2026 19:00:00 GMT",
+   "EndDateString": "Saturday, October 31, 2026",
+   "LocationTitle": "Confederation Park",
+   "LocationTypeName": "On Location",
+   "LocationTypeValue": "844060000",
+   "MinVols": 5,
+   "NumVols": 7,
+   "OppId": "2e3ae6ef-58b8-f111-aaaf-7ced8da721d3",
+   "Prefs": [
+    ""
+   ],
+   "Program": "First Aid/Medical First Response",
+   "Quals": [
+    ""
+   ],
+   "StartDate": "2026-10-31",
+   "StartDateFull": "Sat, 31 Oct 2026 11:30:00 GMT",
+   "StartDateString": "Saturday, October 31, 2026",
+   "StatusCode": "",
+   "Title": "Hamilton Marathon Road2Hope 5/10KM",
+   "x": "False"
+  },
+  {
+   "City": "Hamilton, ON",
+   "Desc": "Sunday November 1st we host a half and full marathon along the waterfront trail and into stoney creek.",
+   "EndDate": "2026-11-01",
+   "EndDateFull": "Sun, 01 Nov 2026 21:00:00 GMT",
+   "EndDateString": "Sunday, November 1, 2026",
+   "LocationTitle": "Confederation Park",
+   "LocationTypeName": "On Location",
+   "LocationTypeValue": "844060000",
+   "MinVols": 17,
+   "NumVols": 9,
+   "OppId": "c4c05612-aeb9-f111-aaad-3833c5fb6231",
+   "Prefs": [
+    ""
+   ],
+   "Program": "First Aid/Medical First Response",
+   "Quals": [
+    ""
+   ],
+   "StartDate": "2026-11-01",
+   "StartDateFull": "Sun, 01 Nov 2026 11:15:00 GMT",
+   "StartDateString": "Sunday, November 1, 2026",
+   "StatusCode": "",
+   "Title": "Hamilton Road2Hope - Full Marathon",
+   "x": "False"
+  }
+ ]
+}

@@ -39,6 +39,12 @@
   const APP_TITLE = "Cam's VMS Console";
   const TZ = 'America/Toronto';
   const CERT_WARN_DAYS = 90;
+  const SITE_ID = '24684e99-f092-4556-8b54-060fd532e73b'; // portal website id, used in the subgrid endpoint path
+
+  // Modules register themselves here (data modules on D, screens on TABS) so a
+  // new screen is one file in src/ and nothing else has to change.
+  const D = {};
+  const TABS = [];   // { id, label, render: async () => void }
 
   // --- small helpers ----------------------------------------------------
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -74,6 +80,42 @@
     const head = (rows.shift() || []).map(h => h.trim());
     return rows.map(r => Object.fromEntries(head.map((h, i) => [h, (r[i] ?? '').trim()])));
   }
+
+  // --- local store ------------------------------------------------------
+  // Unit-side info that VMS has no fields for: meet times, kits, vehicles,
+  // coordinator, row colours, who's Command/Driver/Sr, etc. Lives in
+  // localStorage on this browser only. Export/import moves it between people.
+  const Store = (() => {
+    const KEY = 'camsvms.v1';
+    const SECTIONS = ['schedule', 'members', 'settings'];
+    let data = null;
+    function load() {
+      if (data) return data;
+      try { data = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { data = {}; }
+      if (!data || typeof data !== 'object') data = {};
+      SECTIONS.forEach(k => { if (!data[k] || typeof data[k] !== 'object') data[k] = {}; });
+      return data;
+    }
+    function save() { try { localStorage.setItem(KEY, JSON.stringify(load())); } catch (e) { /* private mode, quota, whatever - keep going in memory */ } }
+    const get = (section, key) => load()[section][key];
+    const set = (section, key, value) => {
+      const d = load();
+      if (value === undefined || value === null) delete d[section][key]; else d[section][key] = value;
+      save();
+    };
+    // merge a partial object into an entry (handy for one-field edits)
+    const patch = (section, key, partial) => set(section, key, { ...(get(section, key) || {}), ...partial });
+    const all = section => ({ ...load()[section] });
+    const exportJSON = () => JSON.stringify({ exported: new Date().toISOString(), ...load() }, null, 2);
+    const importJSON = (text, { merge = true } = {}) => {
+      const inc = JSON.parse(text); const d = load();
+      SECTIONS.forEach(k => { const src = inc[k] && typeof inc[k] === 'object' ? inc[k] : {}; d[k] = merge ? { ...d[k], ...src } : { ...src }; });
+      save();
+    };
+    const reset = () => { data = {}; SECTIONS.forEach(k => data[k] = {}); save(); };
+    return { get, set, patch, all, exportJSON, importJSON, reset, KEY };
+  })();
+  D.Store = Store;
 
   // --- data layer -------------------------------------------------------
   // Everything below is a plain same-origin fetch using whatever session the
@@ -267,6 +309,7 @@
 
     return { upcomingEngagements, groupEvents, eventDetail, roster, hours, certifications, clear: () => { cache.clear(); token = null; } };
   })();
+  D.VMS = VMS;
 
   // --- styles -----------------------------------------------------------
   // Everything is scoped under #d0007-root so we don't fight the portal css.
@@ -359,8 +402,8 @@
   function render() {
     root.querySelector('nav').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.tab === state.tab));
     main.innerHTML = '<div class="load">Loading…</div>';
-    const fn = { events: renderEvents, roster: renderRoster, hours: renderHours, certs: renderCerts }[state.tab];
-    fn().catch(e => { main.innerHTML = `<div class="wrap"><div class="err"><b>Couldn't load data.</b> ${esc(e.message || e)}</div></div>`; });
+    const tab = TABS.find(t => t.id === state.tab) || TABS[0];
+    Promise.resolve().then(() => tab.render()).catch(e => { main.innerHTML = `<div class="wrap"><div class="err"><b>Couldn't load data.</b> ${esc(e.message || e)}</div></div>`; });
   }
 
   // ---- Events ----
@@ -428,6 +471,7 @@
     } catch (e) { box.innerHTML = `<div class="err">${esc(e.message || e)}</div>`; }
   }
   const CSS_ID = s => String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+  TABS.push({ id: 'events', label: 'Events', render: renderEvents });
 
   // ---- Roster ----
   async function renderRoster() {
@@ -463,6 +507,7 @@
         <h4>SJA certifications</h4>${myCerts.length ? `<ul class="plain">${myCerts.map(c => `<li><span>${esc(c.qualification)}</span><span>${certPill(c.expiry)}</span></li>`).join('')}</ul>` : '<div class="muted">None on file.</div>'}`;
     } catch (e) { side.innerHTML = `<div class="err">${esc(e.message || e)}</div>`; }
   }
+  TABS.push({ id: 'roster', label: 'Roster', render: renderRoster });
 
   // ---- Hours ----
   async function renderHours() {
@@ -492,6 +537,7 @@
     bindSort(main, renderHours);
     main.querySelector('#d7-csv').addEventListener('click', () => downloadCSV(`d0007-hours-${state.hoursBy}.csv`, [state.hoursBy === 'volunteer' ? 'Volunteer' : 'Event', 'Count', 'Completed hours', 'Pending hours'], rows.map(r => [r.label, r.n, r2(r.completed), r2(r.pending)])));
   }
+  TABS.push({ id: 'hours', label: 'Hours', render: renderHours });
 
   // ---- Certifications ----
   function certState(expiry) { if (!expiry) return 'none'; const d = daysUntil(expiry); if (d === null) return 'none'; return d < 0 ? 'expired' : d <= CERT_WARN_DAYS ? 'expiring' : 'current'; }
@@ -517,6 +563,7 @@
     bindSort(main, renderCerts);
     main.querySelector('#d7-csv').addEventListener('click', () => downloadCSV('d0007-certifications.csv', ['Member', 'Qualification', 'Effective', 'Expiry', 'Status', 'Source'], rows.map(c => [c.name, c.qualification, c.effective, c.expiry, c.state, c.source])));
   }
+  TABS.push({ id: 'certs', label: 'Certifications', render: renderCerts });
 
   function downloadCSV(filename, head, rows) {
     const cell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -531,7 +578,7 @@
     addStyles();
     root = el('div', { id: 'd0007-root', role: 'dialog', 'aria-label': APP_TITLE });
     root.innerHTML = `<header><h1>${esc(APP_TITLE)}</h1><span class="sp"></span><button class="btn" id="d7-refresh" title="Re-fetch everything from VMS">Refresh</button><button class="btn" id="d7-close">Close ✕</button></header>
-      <nav>${[['events', 'Events'], ['roster', 'Roster'], ['hours', 'Hours'], ['certs', 'Certifications']].map(([k, l]) => `<button data-tab="${k}">${l}</button>`).join('')}</nav>
+      <nav>${TABS.map(t => `<button data-tab="${t.id}">${esc(t.label)}</button>`).join('')}</nav>
       <main></main>
       <footer>Read-only. Live from your VMS session. Times in Eastern.</footer>`;
     document.body.appendChild(root);
@@ -544,7 +591,7 @@
   }
   function close() { if (root) root.style.display = 'none'; }
 
-  W.D0007 = { open, close, VMS, version: '0.1.3' };
+  W.D0007 = Object.assign({ open, close, render, state, version: '0.1.3' }, D);
 
   // Floating launcher button. Skip it inside iframes (the portal loads entity
   // forms in modals and the script would run there too). Styles go in first -

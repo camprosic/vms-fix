@@ -1,0 +1,1 @@
+Sample responses from the VMS portal, captured with a group lead login and anonymised (member names replaced with Test Volunteer NN, emails and phones scrubbed, viewstate placeholders). Shapes are real; values are not.
