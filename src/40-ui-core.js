@@ -18,9 +18,16 @@
   }
   const matches = (q, ...fields) => !q || fields.some(f => norm(f).includes(norm(q)));
 
+  // Each render gets a ticket; a slow tab that finishes after you've already
+  // switched away must not paint over the new one.
+  let renderTicket = 0;
   function render() {
+    const ticket = ++renderTicket;
     root.querySelector('nav').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.tab === state.tab));
     main.innerHTML = '<div class="load">Loading…</div>';
     const tab = TABS.find(t => t.id === state.tab) || TABS[0];
-    Promise.resolve().then(() => tab.render()).catch(e => { main.innerHTML = `<div class="wrap"><div class="err"><b>Couldn't load data.</b> ${esc(e.message || e)}</div></div>`; });
+    Promise.resolve().then(() => tab.render()).catch(e => { if (ticket === renderTicket) main.innerHTML = `<div class="wrap"><div class="err"><b>Couldn't load data.</b> ${esc(e.message || e)}</div></div>`; });
   }
+  // Screens call this before writing to main after an await: if it returns
+  // false the user has moved on and the screen should just stop.
+  const stillCurrent = tabId => state.tab === tabId;

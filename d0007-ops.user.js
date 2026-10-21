@@ -401,16 +401,24 @@
   }
   const matches = (q, ...fields) => !q || fields.some(f => norm(f).includes(norm(q)));
 
+  // Each render gets a ticket; a slow tab that finishes after you've already
+  // switched away must not paint over the new one.
+  let renderTicket = 0;
   function render() {
+    const ticket = ++renderTicket;
     root.querySelector('nav').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.tab === state.tab));
     main.innerHTML = '<div class="load">Loading…</div>';
     const tab = TABS.find(t => t.id === state.tab) || TABS[0];
-    Promise.resolve().then(() => tab.render()).catch(e => { main.innerHTML = `<div class="wrap"><div class="err"><b>Couldn't load data.</b> ${esc(e.message || e)}</div></div>`; });
+    Promise.resolve().then(() => tab.render()).catch(e => { if (ticket === renderTicket) main.innerHTML = `<div class="wrap"><div class="err"><b>Couldn't load data.</b> ${esc(e.message || e)}</div></div>`; });
   }
+  // Screens call this before writing to main after an await: if it returns
+  // false the user has moved on and the screen should just stop.
+  const stillCurrent = tabId => state.tab === tabId;
 
   // ---- Events ----
   async function renderEvents() {
     const [ev, up] = await Promise.all([VMS.groupEvents(), VMS.upcomingEngagements().catch(() => [])]);
+    if (!stillCurrent('events')) return;
     const staffing = new Map(up.map(e => [e.id, e]));
     const list = ev[state.evSet] || [];
     const q = state.q;
@@ -546,6 +554,7 @@
   function certPill(expiry) { const s = certState(expiry); const d = daysUntil(expiry); return s === 'expired' ? pill(`Expired ${fmtD(expiry)}`, 'red') : s === 'expiring' ? pill(`Expires in ${d} d`, 'amber') : s === 'current' ? pill(`Valid to ${fmtD(expiry)}`, 'green') : pill('No expiry', 'grey'); }
   async function renderCerts() {
     const certs = (await VMS.certifications()).map(c => ({ ...c, state: certState(c.expiry), expD: toDate(c.expiry), effD: toDate(c.effective) }));
+    if (!stillCurrent('certs')) return;
     const q = state.q;
     const counts = { expired: 0, expiring: 0, current: 0, none: 0 }; certs.forEach(c => counts[c.state]++);
     const rows = sortRows(certs.filter(c => (state.certFilter === 'all' || c.state === state.certFilter) && matches(q, c.name, c.qualification)), 'certs', 'expD', 1);

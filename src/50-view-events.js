@@ -1,6 +1,7 @@
   // ---- Events ----
   async function renderEvents() {
     const [ev, up] = await Promise.all([VMS.groupEvents(), VMS.upcomingEngagements().catch(() => [])]);
+    if (!stillCurrent('events')) return;
     const staffing = new Map(up.map(e => [e.id, e]));
     const list = ev[state.evSet] || [];
     const q = state.q;
