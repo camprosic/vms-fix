@@ -8,6 +8,13 @@ list of exactly what will change.
 Built for D0007 Hamilton but others are welcome to use it - just be sure to change the "GROUP_ID" global variable. Hope
 it's helpful.
 
+## A NOTE TO END USERS FROM CAM
+**TAMPERMONKEY IS SKETCHY!**
+Unless I've shown you how to install this specifically on your machine, or you have *ACTUAL CODING EXPERINECE* (not vibe-coding), DON'T USE THIS. I am happy to install this properly and show you what it does, how I've designed it, etc.
+
+**I AM NOT RESPONSIBLE FOR YOUR USE OF THIS WRAPPER UNLESS I'VE INSTALLED AND SHOWN YOU HOW TO USE IT.**
+- Cam Prosic
+
 ## Install
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/) in any browser
