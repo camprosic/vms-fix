@@ -1,11 +1,13 @@
   // --- data layer -------------------------------------------------------
-  // Everything below is a plain same-origin fetch using whatever session the
-  // browser already has. Read-only. If VMS changes a page, fix it here.
+  // Plain same-origin fetch with whatever session the browser already has.
+  // Read only. When national changes a page, this is the file to fix.
   //
   // The web api (/_api/) would have been the clean way to do all of this and
-  // it did work for about a week. Then it got cut down to a handful of columns
-  // with no notice, so the script leans on the pages and feeds the portal's own
-  // UI uses instead. Less elegant, but those are much less likely to vanish.
+  // for about a week it worked. Then it got cut down to a handful of columns
+  // overnight, no notice, no changelog. So instead this leans on the pages and
+  // csv feeds the portals own UI runs on. Uglier, but they cant switch those
+  // off without breaking their own site, which is the only kind of stability
+  // I trust at this point.
   const VMS = (() => {
     let token = null;
     const cache = new Map();
@@ -41,8 +43,8 @@
         const v = a.Value;
         const isRef = v && typeof v === 'object';
         o[a.Name] = a.DisplayValue ?? a.FormattedValue ?? (isRef ? (v.Name ?? v.Id ?? '') : (v ?? ''));
-        // Dates come back twice: Value is the old ASP.NET "/Date(ms)/" format and
-        // DisplayValue is ISO. Keep the ISO one as the raw value.
+        // Dates come back twice - Value is the ancient ASP.NET "/Date(ms)/" thing
+        // and DisplayValue is ISO. Keep the ISO one.
         o[a.Name + '__raw'] = /DateTime/i.test(a.Type || '') ? (a.DisplayValue || v) : isRef ? (v.Id ?? null) : v;
       }
       return o;
@@ -64,12 +66,9 @@
     }
 
     // 1. Upcoming published engagements with the signed-up / minimum numbers.
-    //    The portal home page computes "N volunteers still needed" per card, but
-    //    there's nowhere a group lead can see that across all their events at
-    //    once. That's the single most useful number in the whole system.
-    //    NB: get-engagements hands back the *public* engagement opportunity id,
-    //    not the event id the group lead pages use. The public table is still
-    //    open on the web api, so use it to translate.
+    //    Heads up: get-engagements hands back the PUBLIC engagement id, not the
+    //    event id every group lead page uses. Two ids for one event. The public
+    //    table is still open on the web api so we translate through that.
     async function publicToEventIds(publicIds) {
       const map = new Map();
       for (let i = 0; i < publicIds.length; i += 10) {
@@ -98,11 +97,11 @@
       }));
     });
 
-    // 2. The four event lists on the Group Lead > Events page. They're standard
-    //    Power Pages subgrids, so we pull their config off the page and call the
-    //    subgrid endpoint directly instead of scraping the table. There's a
-    //    perfectly good JSON endpoint sitting under every grid in the portal;
-    //    a documented way to use it would have saved a lot of DevTools time.
+    // 2. The four event lists on Group Lead > Events. Standard Power Pages
+    //    subgrids, so we lift the grid config off the page and hit the subgrid
+    //    endpoint directly instead of scraping the table. Theres a perfectly
+    //    good JSON endpoint under every grid in the portal. A paragraph of docs
+    //    about it would have saved me a weekend in DevTools.
     const groupEvents = () => memo('groupEvents', async () => {
       const doc = await getDoc(`/en-US/group-lead/events/?groupid=${GROUP_ID}`);
       const grids = gridsIn(doc);
@@ -123,11 +122,10 @@
       return out;
     });
 
-    // 3. Per event: who has signed up (participations) and what shifts have
-    //    been reported (participation schedules). Both are subgrids on the
-    //    event-summary page. In the portal you open each event one at a time to
-    //    see this, ten rows per page. For a unit running four or five events a
-    //    weekend that's a lot of clicking to answer "who's coming".
+    // 3. Per event: whos signed up (participations) and whos booked what
+    //    (participation schedules). Both subgrids on the event-summary page. In
+    //    the portal you open every event one at a time, ten rows a page, to
+    //    find out whos coming. Four events on a weekend, do the math.
     const eventDetail = eventId => memo('event:' + eventId, async () => {
       const doc = await getDoc(`/en-US/group-lead/event-summary/?eventid=${encodeURIComponent(eventId)}&groupid=${GROUP_ID}`);
       const grids = gridsIn(doc);
@@ -137,40 +135,40 @@
       const val = id => doc.getElementById(id)?.value || doc.getElementById(id)?.textContent || '';
       return {
         description: val('msnfp_shortdescription'),
-        participants: p.map(r => ({ name: r.msnfp_contactid, contactId: r.msnfp_contactid__raw, status: r.msnfp_status, signedUp: toDate(r.createdon__raw || r.createdon), hours: num(r.msnfp_hours), pendingHours: num(r.sjavms_totalpendinghours) }))
+        participants: p.map(r => ({ id: r.id, name: r.msnfp_contactid, contactId: r.msnfp_contactid__raw, status: r.msnfp_status, signedUp: toDate(r.createdon__raw || r.createdon), hours: num(r.msnfp_hours), pendingHours: num(r.sjavms_totalpendinghours) }))
           .sort((a, b) => norm(a.name).localeCompare(norm(b.name))),
-        shifts: s.map(r => ({ name: r.sjavms_volunteer, contactId: r.sjavms_volunteer__raw, start: toDate(r.sjavms_start__raw || r.sjavms_start), hours: num(r.sjavms_hours), status: r.msnfp_schedulestatus }))
+        shifts: s.map(r => ({ id: r.id, name: r.sjavms_volunteer, contactId: r.sjavms_volunteer__raw, start: toDate(r.sjavms_start__raw || r.sjavms_start), hours: num(r.sjavms_hours), status: r.msnfp_schedulestatus }))
           .sort((a, b) => (a.start?.getTime() || 0) - (b.start?.getTime() || 0) || norm(a.name).localeCompare(norm(b.name))),
       };
     });
 
-    // 4. Roster - the csv feed behind the Download CSV button on the Volunteers page.
+    // 4. Roster - the csv feed behind the Download CSV button on the Volunteers
+    //    page. Honestly the most sensible thing in the whole portal.
     const roster = () => memo('roster', async () => parseCSV(await getText(`/group-lead/volunteers-by-group-csv-feed?fetchReport=&fSearch=&groupId=${GROUP_ID}`))
       .map(r => ({ name: r['Name'], email: r['Email Address'], phone: r['Phone Number'], contactId: r['Contact ID'], status: r['Status'] }))
       .sort((a, b) => norm(a.name).localeCompare(norm(b.name))));
 
     // 5. Hours - csv feed behind Reports > Volunteer Hours. win is '' (12 months),
-    //    '90days' or '30days'. The page itself paginates ten rows at a time with
-    //    no totals, so a per-volunteer or per-event rollup means downloading the
-    //    csv and doing it in Excel. Fair enough for once a year, not for every
-    //    week.
+    //    '90days' or '30days'. The page is ten rows at a time with no totals, so
+    //    a per-person rollup means downloading the csv and doing it in Excel.
+    //    Fine once a year for the awards night. Not fine every week.
     const hours = (win = '') => memo('hours:' + win, async () => parseCSV(await getText(`/group-lead/participation-reports-csv-feed?fetchReport=${encodeURIComponent(win)}&fSearch=&groupId=${GROUP_ID}`))
       .map(r => ({ name: r['Volunteer'], event: r['Volunteering Event'], completed: num(r['Total Completed Hours']), pending: num(r['Total Pending Hours']) })));
 
-    // 6. Certifications. VMS only gives these out through the windowed reports and
-    //    the report codes don't match their labels in the menu. Checked the FetchXML
-    //    behind each one:
+    // 6. Certifications. VMS only gives these out through the windowed reports
+    //    and the report codes dont do what the menu says they do. I checked the
+    //    FetchXML behind each one because the numbers made no sense:
     //      last12months -> expiry in the last 12 months
     //      next90days   -> expiry in the next 90 days
     //      nextYear     -> expiry next calendar year
     //      last90days   -> effective date THIS year (not what the label says)
     //      last30days   -> effective date LAST year (ditto)
     //    Pulling all five and de-duping is the widest view we can get. Anything
-    //    gained more than two years ago that expires after next year won't show.
-    //    There is no "show me all current certs for my group" view anywhere in
-    //    VMS, which for a first-response unit whose members can't deploy on a
-    //    lapsed cert is a strange thing to leave out. I get that it's a national
-    //    platform with a lot of programs to serve, but this one's table stakes.
+    //    gained more than two years ago that expires after next year wont show
+    //    (so a 3 year MFR cert is always covered, which is the one I care about).
+    //    There is no "show me everyones current certs" view anywhere in VMS.
+    //    For a first response unit where a lapsed cert means you dont deploy,
+    //    thats not a nice-to-have, thats the job.
     const CERT_WINDOWS = ['last12months', 'next90days', 'nextYear', 'last90days', 'last30days'];
     const certifications = () => memo('certs', async () => {
       const get = async (name, win) => { try { return parseCSV(await getText(`/group-lead/${name}?fetchReport=${win}&fSearch=&groupId=${GROUP_ID}`)); } catch (e) { return []; } };
@@ -188,8 +186,9 @@
       return rows;
     });
 
-    // 7. The few event columns the web api still exposes: address and the short
-    //    description. Batched ten ids per call, cached per id.
+    // 7. The few event columns the web api still lets us have: the address and
+    //    the short description. Ten ids a call, cached per id. Enjoy them while
+    //    they last.
     const extrasCache = new Map();
     async function eventExtras(ids) {
       const need = [...new Set(ids)].filter(id => id && !extrasCache.has(id));
@@ -206,7 +205,8 @@
       return new Map(ids.map(id => [id, extrasCache.get(id) || null]));
     }
 
-    // 8. Event id -> public engagement id (the id the public /engagement/ page wants).
+    // 8. Event id -> public engagement id (the one the public /engagement/ page
+    //    wants). See 1 for why this exists at all.
     const publicIdCache = new Map();
     async function publicIdsFor(ids) {
       const need = [...new Set(ids)].filter(id => id && !publicIdCache.has(id));
@@ -223,12 +223,12 @@
       return new Map(ids.map(id => [id, publicIdCache.get(id) || null]));
     }
 
-    // 9. The public event page. Every "Shift Options" row carries a JSON blob
-    //    with the shift definition: id, name (MFR / Apprentice / whatever the
-    //    event creator typed), start, end, maxVolunteers (-1 = no cap) and how
-    //    many have booked. Also the description, the qualifications list and
-    //    the location block. This is the only place the shift *definitions*
-    //    are visible to a group lead.
+    // 9. The public event page - the one volunteers see. Every "Shift Options"
+    //    row has a JSON blob on its checkbox with the shift definition: id, name
+    //    (MFR / Apprentice / whatever got typed in), start, end, max and how many
+    //    have booked. Also the description, qualifications and location. This
+    //    is the ONLY place a group lead can see shift definitions. Not on the
+    //    group lead pages. On the public one. Sure.
     const publicEvent = publicId => memo('public:' + publicId, async () => {
       const doc = await getDoc(`/engagement/?id=${encodeURIComponent(publicId)}`);
       const shifts = [...doc.querySelectorAll('input[type="checkbox"][data-value]')].map(cb => {
