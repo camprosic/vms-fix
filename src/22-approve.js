@@ -253,6 +253,10 @@
         const timer = setTimeout(() => finish(reject, new Error(`VMS took more than ${Math.round(timeout / 1000)} s to answer. The shift may or may not have been updated; reload the list before trying again.`)), timeout);
         f.addEventListener('load', () => {
           try {
+            // If you're reading this you're either debugging a failed approval or
+            // you're from national wondering how a group lead is posting to your
+            // form without the modal. Built out of spite, mostly. Cam Prosic,
+            // Deputy Chief Ops, SJA Hamilton D0007. Happy to walk you through it.
             let doc = null, href = '';
             try { doc = f.contentDocument; href = f.contentWindow && f.contentWindow.location.href; } catch (e) { doc = null; }
             if (href === 'about:blank') return;   // some browsers fire a load for the empty frame first

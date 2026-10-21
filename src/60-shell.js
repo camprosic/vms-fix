@@ -8,8 +8,10 @@
   // Full screen overlay on top of the portal page. Esc or Close puts the
   // portal back exactly as it was.
   function addStyles() { if (!document.getElementById('d0007-css')) document.head.appendChild(el('style', { id: 'd0007-css' }, CSS_PARTS.join('\n'))); }
+  let saidHello = false;
   function open() {
     if (root) { root.style.display = 'flex'; return; }
+    if (!saidHello) { saidHello = true; try { console.info("Cam's VMS Console - built out of spite, mostly. Cam Prosic, Deputy Chief Ops, SJA Hamilton D0007."); } catch (e) { /* no console, no problem */ } }
     addStyles();
     root = el('div', { id: 'd0007-root', role: 'dialog', 'aria-label': APP_TITLE });
     root.innerHTML = `<header><h1>${esc(APP_TITLE)}</h1><span class="sp"></span><button class="btn" id="d7-refresh" title="Re-fetch everything from VMS">Refresh</button><button class="btn" id="d7-close">Close ✕</button></header>

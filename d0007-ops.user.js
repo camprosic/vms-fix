@@ -638,6 +638,10 @@
         const timer = setTimeout(() => finish(reject, new Error(`VMS took more than ${Math.round(timeout / 1000)} s to answer. The shift may or may not have been updated; reload the list before trying again.`)), timeout);
         f.addEventListener('load', () => {
           try {
+            // If you're reading this you're either debugging a failed approval or
+            // you're from national wondering how a group lead is posting to your
+            // form without the modal. Built out of spite, mostly. Cam Prosic,
+            // Deputy Chief Ops, SJA Hamilton D0007. Happy to walk you through it.
             let doc = null, href = '';
             try { doc = f.contentDocument; href = f.contentWindow && f.contentWindow.location.href; } catch (e) { doc = null; }
             if (href === 'about:blank') return;   // some browsers fire a load for the empty frame first
@@ -1398,8 +1402,10 @@
   // Full screen overlay on top of the portal page. Esc or Close puts the
   // portal back exactly as it was.
   function addStyles() { if (!document.getElementById('d0007-css')) document.head.appendChild(el('style', { id: 'd0007-css' }, CSS_PARTS.join('\n'))); }
+  let saidHello = false;
   function open() {
     if (root) { root.style.display = 'flex'; return; }
+    if (!saidHello) { saidHello = true; try { console.info("Cam's VMS Console - built out of spite, mostly. Cam Prosic, Deputy Chief Ops, SJA Hamilton D0007."); } catch (e) { /* no console, no problem */ } }
     addStyles();
     root = el('div', { id: 'd0007-root', role: 'dialog', 'aria-label': APP_TITLE });
     root.innerHTML = `<header><h1>${esc(APP_TITLE)}</h1><span class="sp"></span><button class="btn" id="d7-refresh" title="Re-fetch everything from VMS">Refresh</button><button class="btn" id="d7-close">Close ✕</button></header>
