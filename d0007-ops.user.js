@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Cam's VMS Console
 // @namespace    sja-hamilton-d0007
-// @version      0.1.3
-// @description  Read-only, D0007-tailored view over the SJA VMS portal (events, staffing, roster, hours, certifications) using your own signed-in session. No data is written.
+// @version      0.2.0
+// @description  D0007 front end for the SJA VMS portal: events and staffing, a copy-ready event schedule, roster, hours and certifications, and shift-hour approvals. Runs as whoever is signed in.
 // @match        https://volunteer-sja.powerappsportals.com/*
 // @homepageURL  https://github.com/camprosic/vms-fix
 // @supportURL   https://github.com/camprosic/vms-fix/issues
@@ -22,8 +22,10 @@
  * database, it's just spread across six pages and five csv downloads.
  * I'd rather this had shipped with the product. It didn't, so here we are.
  *
- * Nothing in here writes to VMS. It reads the same pages and feeds the portal
- * already serves to a signed-in group lead and puts them on one screen.
+ * Everything is read off the same pages and feeds the portal already serves
+ * to a signed-in group lead. The one write is approving reported shift hours
+ * (Hours tab), which goes through the portal's own approval form after you've
+ * confirmed exactly what's about to change.
  */
 (function () {
   'use strict';
@@ -1781,7 +1783,7 @@ ${['body.d7-print', 'body:has(> #d0007-root:not([style*="none"]))'].map(scope =>
     root.innerHTML = `<header><h1>${esc(APP_TITLE)}</h1><span class="sp"></span><button class="btn" id="d7-refresh" title="Re-fetch everything from VMS">Refresh</button><button class="btn" id="d7-close">Close ✕</button></header>
       <nav>${TABS.map(t => `<button data-tab="${t.id}">${esc(t.label)}</button>`).join('')}</nav>
       <main></main>
-      <footer>Read-only. Live from your VMS session. Times in Eastern.</footer>`;
+      <footer>Live from your VMS session. Only the Hours tab writes anything back. Times in Eastern.</footer>`;
     document.body.appendChild(root);
     main = root.querySelector('main');
     root.querySelector('#d7-close').addEventListener('click', close);
@@ -1792,7 +1794,7 @@ ${['body.d7-print', 'body:has(> #d0007-root:not([style*="none"]))'].map(scope =>
   }
   function close() { if (root) root.style.display = 'none'; }
 
-  W.D0007 = Object.assign({ open, close, render, state, version: '0.1.3' }, D);
+  W.D0007 = Object.assign({ open, close, render, state, version: '0.2.0' }, D);
 
   // Floating launcher button. Skip it inside iframes (the portal loads entity
   // forms in modals and the script would run there too). Styles go in first -

@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Cam's VMS Console
 // @namespace    sja-hamilton-d0007
-// @version      0.1.3
-// @description  Read-only, D0007-tailored view over the SJA VMS portal (events, staffing, roster, hours, certifications) using your own signed-in session. No data is written.
+// @version      0.2.0
+// @description  D0007 front end for the SJA VMS portal: events and staffing, a copy-ready event schedule, roster, hours and certifications, and shift-hour approvals. Runs as whoever is signed in.
 // @match        https://volunteer-sja.powerappsportals.com/*
 // @homepageURL  https://github.com/camprosic/vms-fix
 // @supportURL   https://github.com/camprosic/vms-fix/issues
@@ -22,8 +22,10 @@
  * database, it's just spread across six pages and five csv downloads.
  * I'd rather this had shipped with the product. It didn't, so here we are.
  *
- * Nothing in here writes to VMS. It reads the same pages and feeds the portal
- * already serves to a signed-in group lead and puts them on one screen.
+ * Everything is read off the same pages and feeds the portal already serves
+ * to a signed-in group lead. The one write is approving reported shift hours
+ * (Hours tab), which goes through the portal's own approval form after you've
+ * confirmed exactly what's about to change.
  */
 (function () {
   'use strict';

@@ -13,7 +13,7 @@
     root.innerHTML = `<header><h1>${esc(APP_TITLE)}</h1><span class="sp"></span><button class="btn" id="d7-refresh" title="Re-fetch everything from VMS">Refresh</button><button class="btn" id="d7-close">Close ✕</button></header>
       <nav>${TABS.map(t => `<button data-tab="${t.id}">${esc(t.label)}</button>`).join('')}</nav>
       <main></main>
-      <footer>Read-only. Live from your VMS session. Times in Eastern.</footer>`;
+      <footer>Live from your VMS session. Only the Hours tab writes anything back. Times in Eastern.</footer>`;
     document.body.appendChild(root);
     main = root.querySelector('main');
     root.querySelector('#d7-close').addEventListener('click', close);
