@@ -163,9 +163,10 @@
     }
 
     // 1. Upcoming published engagements with the signed-up / minimum numbers.
-    //    Heads up: get-engagements hands back the PUBLIC engagement id, not the
+    //    Heads up: get-engagements hands back the PUBLIC engagement id(?), not the
     //    event id every group lead page uses. Two ids for one event. The public
     //    table is still open on the web api so we translate through that.
+    //    looks like a bad d365 migration?
     async function publicToEventIds(publicIds) {
       const map = new Map();
       for (let i = 0; i < publicIds.length; i += 10) {
@@ -197,8 +198,9 @@
     // 2. The four event lists on Group Lead > Events. Standard Power Pages
     //    subgrids, so we lift the grid config off the page and hit the subgrid
     //    endpoint directly instead of scraping the table. Theres a perfectly
-    //    good JSON endpoint under every grid in the portal. A paragraph of docs
-    //    about it would have saved me a weekend in DevTools.
+    //    good json endpoint under every grid in the portal. A good source of docs
+    //    about it would have saved me a weekend in devtools.
+    //    maybe a chatgpt byproduct tbh
     const groupEvents = () => memo('groupEvents', async () => {
       const doc = await getDoc(`/en-US/group-lead/events/?groupid=${GROUP_ID}`);
       const grids = gridsIn(doc);
@@ -240,7 +242,7 @@
     });
 
     // 4. Roster - the csv feed behind the Download CSV button on the Volunteers
-    //    page. Honestly the most sensible thing in the whole portal.
+    //    page. Honestly the most sensible thing in the whole portal (again I mean this with love).
     const roster = () => memo('roster', async () => parseCSV(await getText(`/group-lead/volunteers-by-group-csv-feed?fetchReport=&fSearch=&groupId=${GROUP_ID}`))
       .map(r => ({ name: r['Name'], email: r['Email Address'], phone: r['Phone Number'], contactId: r['Contact ID'], status: r['Status'] }))
       .sort((a, b) => norm(a.name).localeCompare(norm(b.name))));
@@ -265,7 +267,7 @@
     //    (so a 3 year MFR cert is always covered, which is the one I care about).
     //    There is no "show me everyones current certs" view anywhere in VMS.
     //    For a first response unit where a lapsed cert means you dont deploy,
-    //    thats not a nice-to-have, thats the job.
+    //    thats not a nice-to-have, thats the job. This one frustrated me -- I don't want to get notified AS my members aren't eligibile.
     const CERT_WINDOWS = ['last12months', 'next90days', 'nextYear', 'last90days', 'last30days'];
     const certifications = () => memo('certs', async () => {
       const get = async (name, win) => { try { return parseCSV(await getText(`/group-lead/${name}?fetchReport=${win}&fSearch=&groupId=${GROUP_ID}`)); } catch (e) { return []; } };
@@ -285,7 +287,7 @@
 
     // 7. The few event columns the web api still lets us have: the address and
     //    the short description. Ten ids a call, cached per id. Enjoy them while
-    //    they last.
+    //    they last. Next time just reach out pls - I (think) I know what I'm doing
     const extrasCache = new Map();
     async function eventExtras(ids) {
       const need = [...new Set(ids)].filter(id => id && !extrasCache.has(id));
@@ -303,7 +305,7 @@
     }
 
     // 8. Event id -> public engagement id (the one the public /engagement/ page
-    //    wants). See 1 for why this exists at all.
+    //    wants). See 1 for why this exists at all (microsoft sucks, i get it)
     const publicIdCache = new Map();
     async function publicIdsFor(ids) {
       const need = [...new Set(ids)].filter(id => id && !publicIdCache.has(id));
@@ -325,7 +327,7 @@
     //    (MFR / Apprentice / whatever got typed in), start, end, max and how many
     //    have booked. Also the description, qualifications and location. This
     //    is the ONLY place a group lead can see shift definitions. Not on the
-    //    group lead pages. On the public one. Sure.
+    //    group lead pages. On the public one. Sure. That makes it easy.
     const publicEvent = publicId => memo('public:' + publicId, async () => {
       const doc = await getDoc(`/engagement/?id=${encodeURIComponent(publicId)}`);
       const shifts = [...doc.querySelectorAll('input[type="checkbox"][data-value]')].map(cb => {
@@ -409,7 +411,7 @@
     const COLUMNS = ['Event', 'Date', 'Meet @ St.John', 'Meet @ Event', 'Approx. End', 'Event Location', 'On-Site Coordinator', 'Event Notes', 'Medical First Responders', 'Apprentice', 'Equipment', 'Vehicle'];
     const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     // Unit rule VMS doesnt know about: an apprentice cant be on a shift without
-    // an MFR to work under. One MFR per apprentice. Change it here if that ever
+    // an MFR to work under. One MFR (or two per site-ish) per apprentice. Change it here if that ever
     // changes.
     const MFR_PER_APPRENTICE = 1;
 
@@ -436,7 +438,7 @@
     //     decides who is an MFR on an event, the booked shift is. Someone with
     //     a current MFR cert who booked the Apprentice shift is on the sheet as
     //     an apprentice that day. So: shift title first, certs only while the
-    //     forms are loading or when a title is something unhelpful.
+    //     forms are loading or when a title is something unhelpful -- PLS FIX NATIONAL!!
     const formCache = new Map();        // booking id -> { role, shiftName } for the session
     const roleByName = new Map();       // name -> last role seen on a booked shift this session (the roster uses it)
     const certRole = (name, certs) => (D.mfrCertOf ? D.mfrCertOf(name, certs) : null) ? 'MFR' : 'Apprentice';
@@ -692,9 +694,9 @@
   // The one place this writes to VMS: approving (or no-showing / cancelling /
   // fixing) the shifts people reported. In the portal thats Group Lead > Hours,
   // ten rows a page, one modal per shift, 3-4 clicks each. After a Ti-Cats
-  // weekend with 40 shifts thats my whole evening gone, and 95% of it is
+  // weekend with 26 shifts thats my whole evening gone, and 95% of it is
   // clicking Submit on a number I already checked against the event form.
-  // 143 pending when I started writing this. One hundred and forty three.
+  // 143 pending when I started writing this. No wonder VOLUNTEER!! admin teams hate their job.
   //
   // What the portal does and what this copies, exactly:
   //  - the Hours page renders the pending list as inline JS - one block of
@@ -742,12 +744,12 @@
     // --- dates ---
     const pad = n => String(n).padStart(2, '0');
     // CRM wants 2026-07-26T16:00:00.0000000Z - seven fraction digits, UTC.
-    // Seven. Not six, not three. Seven.
+    // Seven. Not six, not three. Seven. Cool - that's totally standard guys.
     function toCrmIso(v) {
       const d = toDate(v); if (!d) throw new Error('Not a date: ' + v);
       return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}.0000000Z`;
     }
-    // Safari's Date.parse chokes on those seven digits so this parses by hand.
+    // Safari's Date.parse chokes on those seven digits so this parses by hand. I hate apple sometimes.
     function fromCrmIso(s) {
       const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:?\d{2})?$/.exec(String(s ?? '').trim());
       if (!m) return toDate(s);
@@ -757,7 +759,7 @@
     }
     // Eastern wall clock <-> Date for the datetime-local inputs. The form wants
     // UTC, people want Eastern. These two exist so nobody has to do that math
-    // at 11pm.
+    // at 11pm because that's when a lot of our volunteers get their work done.
     const partsIn = d => Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: TZ, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).formatToParts(d).filter(p => p.type !== 'literal').map(p => [p.type, +p.value]));
     function toLocalInput(v) { const d = toDate(v); if (!d) return ''; const p = partsIn(d); return `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}`; }
     function fromLocalInput(s) {
@@ -779,7 +781,7 @@
     //   volunteerName = "..."; eventName = "..."; actionButton = ...;
     //   $("#pendingShiftsTable").append("<tr><td>" + volunteerName + ... + startDateInEST + "</td><td>5</td> ...
     // The reported hours only exist as that literal <td> in the append string.
-    // Not as a variable. Just sitting in the HTML. So we read it from there.
+    // Not as a variable. Just sitting in the HTML. So we read it from there. WHY??? PLEASE THINK
     const unq = s => s.replace(/\\(.)/g, '$1');
     function parseHoursPage(html) {
       const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -820,8 +822,8 @@
     // --- the approval form ---
     // Refuses to go any further unless the page is the form we expect, for the
     // record we asked for. Cheap insurance against national changing the form
-    // under us (they will, eventually, without telling anyone) and this thing
-    // posting into the wrong place.
+    // under us (they will, eventually, without telling anyone, because why not push to prod with no dev notes) 
+    // and this thing posting into the wrong place.
     function checkForm(doc, shiftId) {
       const idInput = doc.getElementById('EntityFormControl_EntityFormView_EntityID');
       if (!idInput) throw new Error('The approval form has no record id field. VMS may have changed the form; not posting.');
@@ -851,6 +853,8 @@
     // tells us what it read earlier) unchanged since then. Another lead can
     // approve the same shift while you're looking at it - we dont paint over
     // that, we bail and tell you.
+    // BTW: If you do this in the real portal, will probably break everything? Maybe what happened to us?
+    // Race conditions exist guys...
     function verifyLive(doc, shiftId, expect) {
       if (!expect) return;
       const live = readForm(doc, shiftId);
@@ -868,7 +872,7 @@
     // form plus whatever you changed, and refuses the combos VMS would reject or
     // that are obviously wrong (negative hours, end before start, a 30 hour
     // shift...). The screen runs this on every keystroke so what you see in
-    // the row is exactly what gets sent.
+    // the row is exactly what gets sent. Thanks JS (-cam <3)
     function plan(form, changes = {}) {
       const status = String(changes.status ?? form.status ?? STATUS.PENDING);
       if (!STATUS_LABEL[status]) throw new Error(`"${status}" is not a shift status VMS knows`);
@@ -927,7 +931,7 @@
     // The real driver. A hidden same-origin iframe loads the actual form, so the
     // portals own scripts (date pickers, client validators, the WebForms
     // postback) all run exactly like they do in the modal. Sequence:
-    //   1. iframe <- GET modal form
+    //   1. iframe from GET modal form
     //   2. on load: sanity-check the form, set the four fields, fire change
     //   3. click #UpdateButton (its onclick validates then posts back);
     //      if the postback script isn't there, set __EVENTTARGET and form.submit()
@@ -945,8 +949,9 @@
           try {
             // If you're reading this you're either debugging a failed approval or
             // you're from national wondering how a group lead is posting to your
-            // form without the modal. Built out of spite, mostly. Cam Prosic,
-            // Deputy Chief Ops, SJA Hamilton D0007. Happy to walk you through it.
+            // form without the modal. Built out of spite, but with love, mostly. Cam Prosic,
+            // Unit Chief, but previously DC Ops, SJA Hamilton D0007. Happy to walk you through it. You made everything 5x harder for my volunteers.
+            // Please ask for me instead of making a stink. I've been hoping to collaborate you for ages now, just been stumped at every step. I'm happy to help - you've done some good work.
             let doc = null, href = '';
             try { doc = f.contentDocument; href = f.contentWindow && f.contentWindow.location.href; } catch (e) { doc = null; }
             if (href === 'about:blank') return;   // some browsers fire a load for the empty frame first
@@ -982,9 +987,7 @@
 
     // Same postback, by hand: GET the form, serialise every input (viewstate,
     // event validation, the honeypot, all of it), apply our four values, name
-    // the Submit button as the event target, POST to the form's action. This
-    // is what the tests use (jsdom can't run the iframe round trip); it's
-    // also a fallback if the iframe route ever stops working.
+    // the Submit button as the event target, POST to the form's action.
     async function fetchDriver(shiftId, fields, { expect } = {}) {
       const url = formUrl(shiftId);
       const doc = await getDoc(url);
@@ -1156,7 +1159,7 @@
 
   // ---- Events ----
   // The home page works out "N volunteers still needed" per event card, as one
-  // number. One number is useless to us: 7 bodies on a Ti-Cats game where 6 are
+  // number (unreliably given past precedent). One number is useless to us: 7 bodies on a Ti-Cats game where 6 are
   // apprentices isnt covered, its a problem. So this counts MFRs and
   // apprentices seperately, off the shift definitions on the public event page
   // (the only place VMS shows them), and applies the rule VMS doesnt have: an
@@ -1289,6 +1292,8 @@
   // The spreadsheet, as far as VMS can fill it in. Month at a time. Copy it,
   // download it, print it. The rows paint as soon as the events are in and the
   // MFR / Apprentice columns tidy themselves up as the booking forms come back.
+  // Crazy concept. Let's learn how MFR units function and build a system based on that.
+  // AGAIN - I MEAN THIS OUT OF LOVE GUYS. -cp
   const SC = { rows: null, loading: false, progress: '', error: null, token: 0, flash: '' };
   if (!state.schedY) { const t = Schedule.today(); state.schedY = t.year; state.schedM = t.month; }
 
@@ -1473,11 +1478,11 @@
   // ---- Roster ----
   // The volunteers page in the portal is a 10-row paginated table with a csv
   // button. This is the csv, on screen, searchable, with hours and certs a
-  // click away. Revolutionary stuff.
+  // click away. Revolutionary stuff. Come on this is easy in dataverse too, no?
   //
   // "MFR" here means VMS has a current Medical First Responder cert on file for
   // the person (any of the MFR qualification names). Same test the Schedule tab
-  // falls back on when it cant tell which shift someone booked.
+  // falls back on when it cant tell which shift someone booked. BTW: WHY CAN PEOPLE JUST CANCEL SHIFTS? NO ISSUE WITH THAT?
   function mfrCertOf(name, certs) {
     const mine = certs.filter(c => norm(c.name) === norm(name) && /medical first responder/i.test(c.qualification) && c.expiry && daysUntil(c.expiry) >= 0);
     return mine.sort((a, b) => (toDate(b.expiry)?.getTime() || 0) - (toDate(a.expiry)?.getTime() || 0))[0] || null;
@@ -1914,7 +1919,7 @@
   // lapsed MFR cert cant deploy, full stop. VMS has no "show me everyones
   // current certs" view anywhere. It has five windowed reports with labels that
   // dont match what they do (see 20-vms.js). This pulls all five and flags
-  // whats expired, whats about to, and whats fine.
+  // whats expired, whats about to, and whats fine. THIS would be a useful feature. PLEASE IMPLEMENT.
   function certState(expiry) { if (!expiry) return 'none'; const d = daysUntil(expiry); if (d === null) return 'none'; return d < 0 ? 'expired' : d <= CERT_WARN_DAYS ? 'expiring' : 'current'; }
   function certPill(expiry) { const s = certState(expiry); const d = daysUntil(expiry); return s === 'expired' ? pill(`Expired ${fmtD(expiry)}`, 'red') : s === 'expiring' ? pill(`Expires in ${d} d`, 'amber') : s === 'current' ? pill(`Valid to ${fmtD(expiry)}`, 'green') : pill('No expiry', 'grey'); }
   async function renderCerts() {
@@ -1949,7 +1954,7 @@
 
   // --- shell ------------------------------------------------------------
   // Full screen overlay on top of the portal page. Esc or Close puts the
-  // portal back exactly as it was.
+  // portal back exactly as it was. (in theory?)
   function addStyles() { if (!document.getElementById('d0007-css')) document.head.appendChild(el('style', { id: 'd0007-css' }, CSS_PARTS.join('\n'))); }
   let saidHello = false;
   function open() {
@@ -1991,3 +1996,11 @@
     try { GM_registerMenuCommand("Open Cam's VMS Console", open); } catch (e) { }
   }
 })();
+
+// TO THE DEV WHO MADE IT THIS FAR:
+// Thank you for reading my code. I hope you see the
+// improvements that can be made, and aren't offended
+// by the fact I have made this national app work for
+// a specific user-demographic. At the end of the day,
+// I know how shitty Microsoft is to integrate, and am
+// **happy to help** - please just reach out: cameron.prosic@sjacs.ca
