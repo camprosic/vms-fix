@@ -8,7 +8,7 @@ Everything lives inside one IIFE, so a `const` declared in an earlier file is vi
 | `00-header.js` | Userscript header, config (`GROUP_ID`, `SITE_ID`, `TZ`, `CERT_WARN_DAYS`), helpers (`esc`, `el`, `toDate`, `fmtDT`, `fmtD`, `num`, `r2`, `norm`, `daysUntil`, `decodeEntities`, `parseCSV`), the `D` registry and the `TABS` list |
 | `10-store.js` | `Store` — localStorage-backed unit-side data with export/import. Sections: `schedule`, `members`, `settings` |
 | `20-vms.js` | `VMS` — read-only data layer. `upcomingEngagements()`, `groupEvents()`, `eventDetail(id)`, `roster()`, `hours(win)`, `certifications()`, `clear()`. Internals: `getToken()`, `getDoc()`, `getText()`, `gridsIn(doc)`, `subgridRows(grid, opts)`, `flatten(record)` |
-| `30-styles.js` | All CSS, scoped under `#d0007-root` |
+| `30-styles.js` | Base CSS, scoped under `#d0007-root`. Screens push their own rules onto `CSS_PARTS` instead of editing it |
 | `40-ui-core.js` | `state`, `root`/`main`, `pill()`, `statusPill()`, `sortRows()`, `th()`, `bindSort()`, `matches()`, `render()` |
 | `5x-view-*.js` | One screen per file. Each ends with `TABS.push({ id, label, render })` |
 | `60-shell.js` | `downloadCSV()`, `addStyles()`, `open()`, `close()` |
