@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Cam's VMS Console
 // @namespace    sja-hamilton-d0007
-// @version      0.3.0
+// @version      0.3.1
 // @description  D0007 front end for the SJA VMS portal: events and staffing, a copy-ready event schedule, roster, hours and certifications, and shift-hour approvals. Runs as whoever is signed in.
 // @match        https://volunteer-sja.powerappsportals.com/*
 // @homepageURL  https://github.com/camprosic/vms-fix
@@ -1971,7 +1971,7 @@
   }
   function close() { if (root) root.style.display = 'none'; }
 
-  W.D0007 = Object.assign({ open, close, render, state, version: '0.3.0' }, D);
+  W.D0007 = Object.assign({ open, close, render, state, version: '0.3.1' }, D);
 
   // Floating launcher button. Skip it inside iframes (the portal loads its
   // entity forms in modal iframes and the script would run in there too).
