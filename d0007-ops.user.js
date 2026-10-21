@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         D0007 Ops Console — VMS wrapper prototype
+// @name         Cam's VMS Console
 // @namespace    sja-hamilton-d0007
-// @version      0.1.2
+// @version      0.1.3
 // @description  Read-only, D0007-tailored view over the SJA VMS portal (events, staffing, roster, hours, certifications) using your own signed-in session. No data is written.
 // @match        https://volunteer-sja.powerappsportals.com/*
 // @homepageURL  https://github.com/camprosic/vms-fix
@@ -13,7 +13,7 @@
 // ==/UserScript==
 
 /*
- * D0007 Ops Console
+ * Cam's VMS Console
  *
  * The national VMS rollout gave group leads a dashboard that shows "Pending
  * Approval" and "Pending Publish" and not much else. Everything a unit
@@ -36,7 +36,7 @@
   // Group id for Hamilton-Wentworth Division. Grab it from the groupid= param
   // on any Group Lead page if it ever changes.
   const GROUP_ID = 'cf450413-327a-ed11-81ad-0022486d6297'; // HAMILTON-WENTWORTH DIVISION (D0007)
-  const UNIT_LABEL = 'D0007 · Hamilton-Wentworth MFR';
+  const APP_TITLE = "Cam's VMS Console";
   const TZ = 'America/Toronto';
   const CERT_WARN_DAYS = 90;
 
@@ -276,7 +276,6 @@
 #d0007-root a{color:#2f6b3a}
 #d0007-root header{background:#1f4d2b;color:#fff;padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 #d0007-root header h1{font-size:16px;margin:0;font-weight:600;letter-spacing:.2px}
-#d0007-root header .sub{opacity:.8;font-size:12px}
 #d0007-root header .sp{flex:1}
 #d0007-root .btn{border:1px solid #cfd8d0;background:#fff;color:#1d2a1f;border-radius:6px;padding:6px 10px;cursor:pointer;font:inherit;font-size:13px}
 #d0007-root .btn:hover{background:#eef3ee}
@@ -530,11 +529,11 @@
   function open() {
     if (root) { root.style.display = 'flex'; return; }
     addStyles();
-    root = el('div', { id: 'd0007-root', role: 'dialog', 'aria-label': 'D0007 Ops Console' });
-    root.innerHTML = `<header><h1>${esc(UNIT_LABEL)}</h1><span class="sub">Ops Console · prototype · read-only</span><span class="sp"></span><button class="btn" id="d7-refresh" title="Re-fetch everything from VMS">Refresh</button><button class="btn" id="d7-close">Close ✕</button></header>
+    root = el('div', { id: 'd0007-root', role: 'dialog', 'aria-label': APP_TITLE });
+    root.innerHTML = `<header><h1>${esc(APP_TITLE)}</h1><span class="sp"></span><button class="btn" id="d7-refresh" title="Re-fetch everything from VMS">Refresh</button><button class="btn" id="d7-close">Close ✕</button></header>
       <nav>${[['events', 'Events'], ['roster', 'Roster'], ['hours', 'Hours'], ['certs', 'Certifications']].map(([k, l]) => `<button data-tab="${k}">${l}</button>`).join('')}</nav>
       <main></main>
-      <footer>Data comes live from your VMS session (Group Lead pages, reports and CSV feeds). Nothing here writes back to VMS. Times shown in Eastern.</footer>`;
+      <footer>Read-only. Live from your VMS session. Times in Eastern.</footer>`;
     document.body.appendChild(root);
     main = root.querySelector('main');
     root.querySelector('#d7-close').addEventListener('click', close);
@@ -545,7 +544,7 @@
   }
   function close() { if (root) root.style.display = 'none'; }
 
-  W.D0007 = { open, close, VMS, version: '0.1.2' };
+  W.D0007 = { open, close, VMS, version: '0.1.3' };
 
   // Floating launcher button. Skip it inside iframes (the portal loads entity
   // forms in modals and the script would run there too). Styles go in first -
@@ -553,7 +552,7 @@
   // unstyled at the bottom of the page. Thanks, Safari, for making me notice.
   if (window.top === window.self && document.body) {
     addStyles();
-    const b = el('button', { id: 'd0007-launch', type: 'button', title: 'Open the D0007 Ops Console' }, 'D0007');
+    const b = el('button', { id: 'd0007-launch', type: 'button', title: APP_TITLE }, 'VMS');
     b.addEventListener('click', open);
     document.body.appendChild(b);
     if (location.hash === '#d0007') open();
@@ -561,6 +560,6 @@
   // Second way in, from the Tampermonkey icon menu, in case the button is ever
   // hidden by something on the page.
   if (typeof GM_registerMenuCommand === 'function') {
-    try { GM_registerMenuCommand('Open D0007 console', open); } catch (e) { }
+    try { GM_registerMenuCommand("Open Cam's VMS Console", open); } catch (e) { }
   }
 })();

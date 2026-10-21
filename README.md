@@ -1,6 +1,6 @@
 # vms-fix
 
-A Tampermonkey userscript that puts a D0007-shaped front end on the national VMS portal. Read-only. It runs on the
+A Tampermonkey userscript that puts a D0007-shaped front end on the national VMS portal. Read-only for now. It runs on the
 portal page as whoever is signed in, so it only ever shows what that person's VMS role already lets them see, and it
 never writes anything back.
 
@@ -15,7 +15,7 @@ top of the script.
    https://raw.githubusercontent.com/camprosic/vms-fix/main/d0007-ops.user.js
 
 3. Sign in to https://volunteer-sja.powerappsportals.com as normal.
-4. There's now a green **D0007** button bottom-right on every portal page. Click it (or add `#d0007` to any portal URL).
+4. There's now a green **VMS** button bottom-right on every portal page. Click it (or add `#d0007` to any portal URL).
    `Esc` closes it.
 
 Updates: the script header has `@updateURL` / `@downloadURL` pointing back at this repo, so Tampermonkey picks up new
