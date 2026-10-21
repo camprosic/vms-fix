@@ -30,9 +30,11 @@ Chrome 138+ note: if Tampermonkey complains that userscripts are blocked, turn o
 | Tab | Shows | Source |
 |---|---|---|
 | Events | Upcoming / current / past / ad hoc events for the group with date, location, status, required quals and a staffing bar (signed up vs minimum, "N still needed"). "Who's on it" expands the sign-up list and reported shifts. | Group Lead > Events subgrids, `get-engagements`, event-summary subgrids |
-| Roster | All group members with email, phone, status, contact id. Search. Click a member for their 12-month hours and certs. CSV download. | `volunteers-by-group-csv-feed` |
+| Schedule | The monthly event schedule in the same 12-column layout as the unit's spreadsheet: one row per event day, meet/end times from the day's main shift, names split into MFR / Apprentice with C / D / Sr tags, other-unit labels and `*` partial-shift markers (with the matching `**16:30 to End` note), plus the unit-side columns VMS doesn't have (Meet @ St.John, coordinator, notes, requirement, equipment, vehicle, row colour) editable in place. Copy the month as spreadsheet rows, download it as .xlsx, or print it. | Events + event-summary subgrids, `Store` for the unit-side columns |
+| Roster | All group members with email, phone, status, contact id and effective schedule role. Search. Click a member for their 12-month hours and certs, and to set their schedule tags (MFR/Apprentice, C/D/Sr, unit). CSV download. | `volunteers-by-group-csv-feed`, `Store` for tags |
 | Hours | **Pending approvals**: every reported shift waiting on a group lead, grouped by event, with hours / status / times editable per row or per event, a confirmation list, and a per-shift result. Below it (collapsed), completed vs pending hours by volunteer or by event, 12 months / 90 days / 30 days. Sortable. CSV download. | Group Lead → Hours page, the shift approval entity form, `participation-reports-csv-feed` |
 | Certifications | Every cert VMS will report, flagged Expired / Expiring in 90 days / Current / No expiry. Filter by status, member or qualification. CSV download. | `qualifications-gained-csv-feed` + `verified-qualifications-csv-feed` |
+| Data | Export / import / reset the unit-side data (schedule edits, member tags) as a JSON file so it can be passed between people. | localStorage |
 
 ## How it gets the data
 
@@ -55,6 +57,19 @@ clicking through pages.
   all five and de-dupes.
 
 Results are cached in memory until you hit Refresh.
+
+## The event schedule
+
+VMS knows the event, where it is, who booked which shift and when. The spreadsheet the unit actually runs on adds
+things VMS has no field for: when to meet at the branch, who's coordinating on site, kit and vehicle numbers, the
+staffing requirement, and who's Command / Driver / Sr versus Apprentice. The Schedule tab derives everything it can
+from VMS (one row per event day, the main shift window, who's on it, who's on a partial shift) and stores the rest in
+the browser's localStorage under `camsvms.v1`. That means edits live on the machine where you made them - use the Data
+tab to export them as a file and import on another one. Roles default to Apprentice unless VMS has a current Medical
+First Responder certification on file for the person; override per member from the Roster tab.
+
+Rows are keyed by event id and date, so they survive VMS renaming or re-timing the event. Past events older than
+about six weeks aren't opened (that's one page read per event), so the month view is forward-looking by design.
 
 ## Approving hours
 
@@ -84,6 +99,7 @@ runs on, so they're much less likely to be switched off.
 
 ## Known limits
 
+- Schedule edits and member tags are per browser (localStorage). Export from the Data tab before clearing site data or switching machines.
 - Certs gained more than two years ago that expire after next year don't show up in any VMS report window.
 - Past events list is capped at the 200 most recent.
 - Members are matched across feeds by name (the csv feeds don't carry contact ids consistently), so a renamed or
