@@ -112,3 +112,9 @@ runs on, so they're much less likely to be switched off.
 Roster and cert feeds contain personal info. The script keeps everything in page memory, writes nothing to disk unless
 you press a Download CSV button, and only shows what the signed-in user can already see in the portal. Treat the CSVs
 like any other VMS export.
+
+## Credit
+Please give me credit if you find this helpful. I'm not trying to work adversarially against National, just trying to point out that a 'one-size-fits-all' solution really isn't the case for Ontario MFR and creating a solution with the tools I've been given. If there's an issue with the UI I've made, and SJA asks me to take it down, I will happily do so. Please don't take my inline comments offensively -- I do appreciate the work you guys are doing <3
+
+Cheers,
+Cam <3
