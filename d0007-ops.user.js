@@ -591,8 +591,13 @@
 
     // Same-origin fetch with the same session check VMS uses. VMS keeps its
     // helpers private and this module has to POST, so it gets its own.
-    async function fetchOk(url, opts = {}) {
-      const r = await fetch(url, { credentials: 'same-origin', ...opts });
+    async function fetchOk(url, { timeout = 30000, ...opts } = {}) {
+      const ac = typeof AbortController === 'function' ? new AbortController() : null;
+      const timer = ac && setTimeout(() => ac.abort(), timeout);
+      let r;
+      try { r = await fetch(url, { credentials: 'same-origin', signal: ac ? ac.signal : undefined, ...opts }); }
+      catch (e) { throw new Error(ac && ac.signal.aborted ? `VMS didn't answer within ${Math.round(timeout / 1000)} s.` : (e.message || String(e))); }
+      finally { if (timer) clearTimeout(timer); }
       if (r.redirected && /signin|b2clogin|login/i.test(r.url)) throw new Error('Your VMS session has expired. Sign in to the portal, then press Refresh.');
       if (!r.ok) throw new Error(`${String(url).split('?')[0]} → HTTP ${r.status}`);
       return r;
@@ -626,6 +631,8 @@
       // two passes so the DST changeover days come out right
       let d = new Date(wall - off(new Date(wall)));
       d = new Date(wall - off(d));
+      // 02:30 on spring-forward day doesn't exist; land on 03:30 like a clock would
+      if (toLocalInput(d) !== `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}`) d = new Date(d.getTime() + 3600000);
       return d;
     }
 
@@ -677,9 +684,11 @@
     // under us and this script posting into the wrong thing.
     function checkForm(doc, shiftId) {
       const idInput = doc.getElementById('EntityFormControl_EntityFormView_EntityID');
-      if (idInput && norm(idInput.value) !== norm(shiftId)) throw new Error(`The form that loaded is for a different record (${idInput.value}), not ${shiftId}. Not posting.`);
+      if (!idInput) throw new Error('The approval form has no record id field. VMS may have changed the form; not posting.');
+      if (norm(idInput.value) !== norm(shiftId)) throw new Error(`The form that loaded is for a different record (${idInput.value}), not ${shiftId}. Not posting.`);
       const ent = doc.getElementById('EntityFormControl_EntityFormView_EntityName');
-      if (ent && ent.value !== 'msnfp_participationschedule') throw new Error(`Expected a participation-schedule form, got "${ent.value}". Not posting.`);
+      if (!ent) throw new Error('The approval form has no entity name field. VMS may have changed the form; not posting.');
+      if (ent.value !== 'msnfp_participationschedule') throw new Error(`Expected a participation-schedule form, got "${ent.value}". Not posting.`);
       for (const id of FIELDS) if (!doc.getElementById(id)) throw new Error(`The approval form has no #${id} field. VMS may have changed the form; not posting.`);
       const btn = doc.getElementById('UpdateButton');
       if (!btn || !btn.getAttribute('name')) throw new Error('The approval form has no Submit button; not posting.');
@@ -693,7 +702,24 @@
       const sel = doc.getElementById('msnfp_schedulestatus');
       const statusOptions = [...sel.options].filter(o => o.value).map(o => ({ value: o.value, label: o.textContent.trim() }));
       const status = sel.value || (sel.querySelector('option[selected]')?.value ?? '');
-      return { shiftId, participation: v('msnfp_participationid_name'), scheduleName: v('msnfp_engagementopportunityscheduleid_name'), start: fromCrmIso(v('sjavms_start')), end: fromCrmIso(v('sjavms_end')), hours: num(v('sjavms_hours')), status, statusOptions };
+      const hraw = v('sjavms_hours').trim();
+      if (hraw && !/^\d+(\.\d+)?$/.test(hraw)) throw new Error(`The form's hours value "${hraw}" isn't a plain number; not touching this shift.`);
+      return { shiftId, participation: v('msnfp_participationid_name'), scheduleName: v('msnfp_engagementopportunityscheduleid_name'), start: fromCrmIso(v('sjavms_start')), end: fromCrmIso(v('sjavms_end')), hours: hraw ? Number(hraw) : 0, status, statusOptions };
+    }
+    // Belt and braces at post time: the form we're about to submit must still
+    // be Pending, for the volunteer we think it is, and (if the caller tells
+    // us what it read earlier) unchanged since then. Another lead could have
+    // approved it in the meantime; we don't paint over that.
+    function verifyLive(doc, shiftId, expect) {
+      if (!expect) return;
+      const live = readForm(doc, shiftId);
+      const want = expect.status || STATUS.PENDING;
+      if (live.status !== want) throw new Error(`This shift is now "${STATUS_LABEL[live.status] || live.status}" in VMS, not ${STATUS_LABEL[want]}. Someone else got to it; reload the list.`);
+      if (expect.name && live.participation && !norm(live.participation).startsWith(norm(expect.name))) throw new Error(`The form is for "${live.participation}", not ${expect.name}. Not posting.`);
+      const near = (a, b) => (!a && !b) || (a && b && Math.abs(toDate(a).getTime() - toDate(b).getTime()) < 60000);
+      if ((expect.start && !near(live.start, expect.start)) || (expect.end && !near(live.end, expect.end)) || (expect.hours !== undefined && expect.hours !== null && Math.abs(live.hours - expect.hours) > 0.005)) {
+        throw new Error('This shift changed in VMS since it was read (times or hours differ). Reload the list and check it again.');
+      }
     }
     const loadForm = async shiftId => readForm(await getDoc(formUrl(shiftId)), shiftId);
 
@@ -719,9 +745,9 @@
         const fs = toDate(form.start);
         if (fs && fs.getTime() === start.getTime()) end = toDate(form.end);
       }
-      if (end === null) end = new Date(start.getTime() + hours * 3600000);
-      else if (hours === null) hours = (end.getTime() - start.getTime()) / 3600000;
-      hours = r2(hours);
+      if (end === null) { hours = r2(hours); end = new Date(Math.round((start.getTime() + hours * 3600000) / 60000) * 60000); }
+      else if (hours === null) hours = r2((end.getTime() - start.getTime()) / 3600000);
+      else hours = r2(hours);
       if (end.getTime() < start.getTime()) throw new Error('Shift end is before its start');
       if (hours > 24) throw new Error(`${hours} hours is more than a day; check the times or split the shift`);
       if (status === STATUS.APPROVED && !(hours > 0)) throw new Error('Approving a shift needs more than zero hours');
@@ -765,7 +791,7 @@
     //   4. shortly after: if the page's validators said no, bail with their text
     //   5. on the next load: #MessageLabel == success, else collect the errors
     //   6. always remove the iframe; 45 s without an answer is a failure
-    function iframeDriver(shiftId, fields, { timeout = 45000 } = {}) {
+    function iframeDriver(shiftId, fields, { timeout = 45000, expect } = {}) {
       return new Promise((resolve, reject) => {
         const f = document.createElement('iframe');
         f.style.display = 'none'; f.setAttribute('aria-hidden', 'true'); f.setAttribute('title', 'VMS approval form');
@@ -774,14 +800,20 @@
         const timer = setTimeout(() => finish(reject, new Error(`VMS took more than ${Math.round(timeout / 1000)} s to answer. The shift may or may not have been updated; reload the list before trying again.`)), timeout);
         f.addEventListener('load', () => {
           try {
-            const doc = f.contentDocument, w = f.contentWindow;
-            if (!doc || !w) throw new Error('Could not read the approval form.');
-            if (/signin|b2clogin|login/i.test(w.location.href)) throw new Error('Your VMS session has expired. Sign in to the portal, then press Refresh.');
+            let doc = null, href = '';
+            try { doc = f.contentDocument; href = f.contentWindow && f.contentWindow.location.href; } catch (e) { doc = null; }
+            if (href === 'about:blank') return;   // some browsers fire a load for the empty frame first
+            if (!doc) throw new Error('Could not read the approval form (the frame landed somewhere this script can\'t see, probably the sign-in page). Sign in to the portal, then press Refresh.');
+            const w = f.contentWindow;
+            if (/signin|b2clogin|login/i.test(href)) throw new Error('Your VMS session has expired. Sign in to the portal, then press Refresh.');
             if (phase === 'result') { finish(resolve, readResult(doc)); return; }
             phase = 'result';
             const { form, btn } = checkForm(doc, shiftId);
+            verifyLive(doc, shiftId, expect);
             fillForm(doc, fields);
-            if (typeof w.WebForm_DoPostBackWithOptions === 'function' && btn.getAttribute('onclick')) btn.click();
+            const viaClick = typeof w.WebForm_DoPostBackWithOptions === 'function' && btn.getAttribute('onclick');
+            try { console.info('[VMS console] posting approval for', shiftId, viaClick ? 'via the form\'s Submit button' : 'via form.submit() fallback'); } catch (e) { /* no console */ }
+            if (viaClick) btn.click();
             else {
               const set = (name, val) => { let i = form.querySelector(`input[name="${name}"]`); if (!i) { i = doc.createElement('input'); i.type = 'hidden'; i.name = name; form.appendChild(i); } i.value = val; };
               set('__EVENTTARGET', btn.getAttribute('name')); set('__EVENTARGUMENT', '');
@@ -806,14 +838,15 @@
     // the Submit button as the event target, POST to the form's action. This
     // is what the tests use (jsdom can't run the iframe round trip); it's
     // also a fallback if the iframe route ever stops working.
-    async function fetchDriver(shiftId, fields) {
+    async function fetchDriver(shiftId, fields, { expect } = {}) {
       const url = formUrl(shiftId);
       const doc = await getDoc(url);
       const { form, btn } = checkForm(doc, shiftId);
+      verifyLive(doc, shiftId, expect);
       fillForm(doc, fields);
       const body = new URLSearchParams();
       for (const n of form.querySelectorAll('input, select, textarea')) {
-        if (!n.name) continue;
+        if (!n.name || n.disabled) continue;
         const type = (n.getAttribute('type') || n.tagName).toLowerCase();
         if (['button', 'submit', 'reset', 'image', 'file'].includes(type)) continue;
         if ((type === 'checkbox' || type === 'radio') && !n.checked) continue;
@@ -828,11 +861,13 @@
 
     // values: { start, end, hours, status } (what plan() returns).
     // Resolves { ok: true } or rejects with the portal's own message.
-    async function submit(shiftId, values, { driver, timeout } = {}) {
+    // expect (optional): { status, start, end, hours, name } as read earlier;
+    // the driver refuses to post if the live form no longer matches.
+    async function submit(shiftId, values, { driver, timeout, expect } = {}) {
       if (!shiftId) throw new Error('No shift id');
       const fields = fieldsFor(values);
       const drv = typeof driver === 'function' ? driver : drivers[driver || api.defaultDriver] || drivers.iframe;
-      return drv(shiftId, fields, { timeout });
+      return drv(shiftId, fields, { timeout, expect });
     }
 
     // Sequential on purpose: one shift at a time, the way a person does it,
@@ -843,9 +878,10 @@
         for (let i = 0; i < items.length; i++) {
           const it = items[i];
           let result;
-          try { result = await submit(it.shiftId, it.values, { driver }); done.push({ ...it, result }); }
+          try { result = await submit(it.shiftId, it.values, { driver, expect: it.expect }); done.push({ ...it, result }); }
           catch (e) { result = { ok: false, error: e.message || String(e) }; failed.push({ ...it, error: result.error }); }
-          if (onProgress) onProgress(i, result, it);
+          // The screen's progress hook must never be able to stop the loop.
+          if (onProgress) { try { onProgress(i, result, it); } catch (e) { try { console.warn('[VMS console] progress hook failed', e); } catch (_) { /* no console */ } } }
           if (!result.ok && stopOnError) break;
         }
       } finally {
@@ -855,7 +891,7 @@
       return { done, failed };
     }
 
-    const api = { STATUS, STATUS_LABEL, FORM_ID, SUCCESS, formUrl, hoursUrl, parseHoursPage, pending, loadForm, plan, submit, run, toCrmIso, fromCrmIso, toLocalInput, fromLocalInput, readResult, drivers, defaultDriver: 'iframe' };
+    const api = { STATUS, STATUS_LABEL, FORM_ID, SUCCESS, formUrl, hoursUrl, parseHoursPage, pending, loadForm, plan, submit, run, verifyLive, toCrmIso, fromCrmIso, toLocalInput, fromLocalInput, readResult, drivers, defaultDriver: 'iframe' };
     return api;
   })();
   D.Approvals = Approvals;
@@ -1351,6 +1387,7 @@ ${['body.d7-print', 'body:has(> #d0007-root:not([style*="none"]))'].map(scope =>
 
   // Entry from the tab bar or Refresh: start over.
   async function renderHours() {
+    if (AP.running) { await paintHours(); return; }   // a batch is mid-flight; just show it
     Object.assign(AP, { list: null, error: null, confirm: null, running: null, rows: new Map(), progress: '' });
     await apLoad();
   }
@@ -1372,7 +1409,8 @@ ${['body.d7-print', 'body:has(> #d0007-root:not([style*="none"]))'].map(scope =>
       if (token !== AP.loadToken) return;
       AP.list = list; AP.rows = new Map(); AP.progress = '';
       // (a form read still in flight belongs to the old row object; the new one just reads again when touched)
-      for (const it of list) { const old = keepRows && prev.get(it.shiftId); AP.rows.set(it.shiftId, old ? { ...old, item: it, formLoading: false, formPromise: null } : apRow(it)); }
+      for (const it of list) { const old = keepRows && prev.get(it.shiftId); AP.rows.set(it.shiftId, old ? { ...old, item: it, form: null, formLoading: false, formPromise: null } : apRow(it)); }
+      // (edits and selection carry over; the form snapshot doesn't, so the next touch reads it fresh)
     } catch (e) { if (token !== AP.loadToken) return; AP.error = e.message || String(e); AP.progress = ''; }
     await paintHours();
   }
@@ -1465,7 +1503,8 @@ ${['body.d7-print', 'body:has(> #d0007-root:not([style*="none"]))'].map(scope =>
   }
   function apActionsHTML() {
     const n = apSelected().length;
-    return `<div class="ap-actions" id="ap-actions"><b id="ap-count">${n} selected</b><span class="sp"></span>
+    const hidden = apSelected().filter(r => !matches(state.pendingSearch || '', r.item.name, r.item.event)).length;
+    return `<div class="ap-actions" id="ap-actions"><b id="ap-count">${n} selected${hidden ? ` (${hidden} hidden by the filter)` : ''}</b><span class="sp"></span>
       <button class="btn" id="ap-clear" ${n && !apBusy() ? '' : 'disabled'}>Clear selection</button>
       <button class="btn primary" id="ap-submit" ${n && !apBusy() ? '' : 'disabled'}>Submit ${n} change${n === 1 ? '' : 's'}</button></div>`;
   }
@@ -1497,6 +1536,7 @@ ${['body.d7-print', 'body:has(> #d0007-root:not([style*="none"]))'].map(scope =>
 
   // In-place updates so typing in one row doesn't repaint the screen.
   function apRowDom(r, { keepHours = false } = {}) {
+    if (AP.rows.get(r.id) !== r) return;   // an older copy of this row (a reload happened); its DOM isn't ours
     const tr = main && main.querySelector(`tr.ap-row[data-id="${r.id}"]`); if (!tr) return;
     const s = apShown(r);
     tr.classList.toggle('sel', r.sel);
@@ -1514,7 +1554,8 @@ ${['body.d7-print', 'body:has(> #d0007-root:not([style*="none"]))'].map(scope =>
   }
   function apCounts() {
     const n = apSelected().length;
-    const c = main.querySelector('#ap-count'); if (c) c.textContent = `${n} selected`;
+    const hidden = apSelected().filter(r => !matches(state.pendingSearch || '', r.item.name, r.item.event)).length;
+    const c = main.querySelector('#ap-count'); if (c) c.textContent = `${n} selected${hidden ? ` (${hidden} hidden by the filter)` : ''}`;
     const b = main.querySelector('#ap-submit'); if (b) { b.textContent = `Submit ${n} change${n === 1 ? '' : 's'}`; b.disabled = !n || apBusy(); }
     const cl = main.querySelector('#ap-clear'); if (cl) cl.disabled = !n || apBusy();
     (AP.groups || []).forEach((g, i) => { const k = g.rows.filter(r => r.sel).length; const s = main.querySelector(`[data-gsel="${i}"]`); if (s) s.textContent = k; const sa = main.querySelector(`[data-selall="${i}"]`); if (sa) sa.textContent = k === g.rows.length ? 'Select none' : 'Select all'; });
@@ -1566,14 +1607,19 @@ ${['body.d7-print', 'body:has(> #d0007-root:not([style*="none"]))'].map(scope =>
     const sel = apSelected(); if (!sel.length || apBusy()) return;
     AP.confirm = { loading: true, items: [] };
     await paintHours();
+    // Always read the forms again here: the panel must describe VMS as it is
+    // now, not as it was when the row was first clicked.
+    sel.forEach(r => { r.form = null; r.formError = null; });
     await Promise.all(sel.map(apEnsureForm));
     if (!AP.confirm || !AP.confirm.loading) return;   // cancelled meanwhile
     AP.confirm = { loading: false, items: sel.map(r => {
       if (!r.form) return { r, err: 'Couldn\'t read the shift form: ' + (r.formError || 'unknown error') };
       if (r.form.status !== Approvals.STATUS.PENDING) return { r, err: `Already ${Approvals.STATUS_LABEL[r.form.status] || r.form.status} in VMS` };
+      if (r.form.participation && !norm(r.form.participation).startsWith(norm(r.item.name))) return { r, err: `The form is for "${r.form.participation}", not this row` };
       try {
         const p = Approvals.plan(r.form, { ...r.edits, status: r.status });
-        const noop = p.status === r.form.status && p.hours === r2(r.form.hours) && p.start.getTime() === r.form.start.getTime() && p.end.getTime() === r.form.end.getTime();
+        const same = (a, b) => (!a && !b) || (a && b && a.getTime() === b.getTime());
+        const noop = p.status === r.form.status && p.hours === r2(r.form.hours) && same(p.start, r.form.start) && same(p.end, r.form.end);
         return { r, plan: p, noop };
       } catch (e) { return { r, err: e.message || String(e) }; }
     }) };
@@ -1585,9 +1631,9 @@ ${['body.d7-print', 'body:has(> #d0007-root:not([style*="none"]))'].map(scope =>
     if (!items.length) { AP.confirm = null; paintHours(); return; }
     AP.confirm = null; AP.running = { i: 0, n: items.length };
     await paintHours();
-    const res = await Approvals.run(items.map(i => ({ shiftId: i.r.id, values: i.plan, row: i.r })), {
+    const res = await Approvals.run(items.map(i => ({ shiftId: i.r.id, values: i.plan, row: i.r, expect: { status: Approvals.STATUS.PENDING, start: i.r.form.start, end: i.r.form.end, hours: i.r.form.hours, name: i.r.item.name } })), {
       onProgress: (idx, result) => {
-        const r = items[idx].r; r.result = result; AP.running.i = idx + 1;
+        const r = items[idx].r; r.result = result; if (AP.running) AP.running.i = idx + 1;
         apRowDom(r);
         const n = main.querySelector('#ap-run .ap-run-n'); if (n) n.textContent = `${idx + 1} of ${items.length}`;
         const bar = main.querySelector('#ap-run .track i'); if (bar) bar.style.width = `${Math.round(100 * (idx + 1) / items.length)}%`;

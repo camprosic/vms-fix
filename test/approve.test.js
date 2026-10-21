@@ -275,7 +275,10 @@ module.exports = {
     const A = D0007.Approvals;
     A.defaultDriver = 'fetch';
     // the form fixture for whichever shift is asked for; the Beer shift's post fails
-    mock.override(isFormGet, (u, o, res) => res(html(fx('approveShiftForm.html').replace(/5aad352a-4685-f111-ab0e-7ced8da56148/g, new URL(u, 'https://x').searchParams.get('id')))));
+    // the form fixture, re-pointed at whichever shift is asked for (id and the "Volunteer - Event" label,
+    // since the screen refuses a form that names someone else); the Beer shift's post fails
+    const who = Object.fromEntries(A.parseHoursPage('<script>' + fx('hoursPage.js') + '</script>').items.map(i => [i.shiftId, `${i.name} - ${i.event}`]));
+    mock.override(isFormGet, (u, o, res) => { const id = new URL(u, 'https://x').searchParams.get('id'); return res(html(fx('approveShiftForm.html').replace(/5aad352a-4685-f111-ab0e-7ced8da56148/g, id).replace('Test Volunteer 91 - Oakville latino festival', who[id] || 'Nobody - Nowhere'))); });
     mock.override(isPost, (u, o, res) => (u.includes('038ce913') ? res(html('<div class="validation-summary"><ul><li>Hours must be between 0 and 24.</li></ul></div>')) : res(html('<span id="MessageLabel">Submission completed successfully.</span>'))));
     try {
       D0007.state.tab = 'hours'; D0007.state.pendingSearch = '';
@@ -329,5 +332,46 @@ module.exports = {
     assert.ok(root.querySelector('#ap-groups .card.muted'), 'fixture queue has no shifts for that event, so the filter shows none');
     root.querySelector('#ap-q').value = 'Beer'; root.querySelector('#ap-q').dispatchEvent(new document.defaultView.Event('input', { bubbles: true }));
     assert.strictEqual(root.querySelectorAll('tr.ap-row').length, 1, 'typing filters without a reload');
+  },
+
+  async 'submit refuses when the live form is no longer pending'({ D0007, assert, mock, fx }) {
+    const A = D0007.Approvals;
+    mock.override(isFormGet, (u, o, res) => res(html(fx('approveShiftForm.html').replace('<option selected="selected" value="335940000">', '<option value="335940000">').replace('<option value="335940001">', '<option selected="selected" value="335940001">'))));
+    await assert.rejects(A.submit('5aad352a-4685-f111-ab0e-7ced8da56148', { start: new Date('2026-07-26T16:00:00Z'), end: new Date('2026-07-26T21:00:00Z'), hours: 5, status: A.STATUS.APPROVED }, { driver: 'fetch', expect: { status: A.STATUS.PENDING } }), /now "Shift Hours Approved" in VMS/);
+  },
+  async 'submit refuses when the live form names someone else or its times moved'({ D0007, assert }) {
+    const A = D0007.Approvals;
+    const values = { start: new Date('2026-07-26T16:00:00Z'), end: new Date('2026-07-26T21:00:00Z'), hours: 5, status: A.STATUS.APPROVED };
+    await assert.rejects(A.submit('5aad352a-4685-f111-ab0e-7ced8da56148', values, { driver: 'fetch', expect: { name: 'Someone Else' } }), /not Someone Else/);
+    await assert.rejects(A.submit('5aad352a-4685-f111-ab0e-7ced8da56148', values, { driver: 'fetch', expect: { hours: 3 } }), /changed in VMS since it was read/);
+    const ok = await A.submit('5aad352a-4685-f111-ab0e-7ced8da56148', values, { driver: 'fetch', expect: { status: A.STATUS.PENDING, name: 'Test Volunteer 91', hours: 5, start: new Date('2026-07-26T16:00:00Z'), end: new Date('2026-07-26T21:00:00Z') } });
+    assert.ok(ok.ok);
+  },
+  async 'a form with odd hours text is refused before anything is posted'({ D0007, assert, mock, fx, fetchLog }) {
+    const A = D0007.Approvals;
+    mock.override(isFormGet, (u, o, res) => res(html(fx('approveShiftForm.html').replace('value="5.00"', 'value="0,5"'))));
+    await assert.rejects(A.loadForm('5aad352a-4685-f111-ab0e-7ced8da56148'), /isn't a plain number/);
+    assert.ok(!fetchLog.some(l => l.method === 'POST'));
+  },
+  async 'a wall time in the spring-forward gap moves forward, not back'({ D0007, assert }) {
+    const A = D0007.Approvals;
+    // 2026-03-08 02:30 Eastern doesn't exist; a clock goes 01:59 EST -> 03:00 EDT
+    const d = A.fromLocalInput('2026-03-08T02:30');
+    assert.strictEqual(d.toISOString(), '2026-03-08T07:30:00.000Z');
+    assert.strictEqual(A.toLocalInput(d), '2026-03-08T03:30');
+    assert.strictEqual(A.toLocalInput(A.fromLocalInput('2026-11-01T01:30')), '2026-11-01T01:30');
+  },
+  async 'plan derives the end from the rounded hours, on the minute'({ D0007, assert }) {
+    const A = D0007.Approvals;
+    const form = { start: new Date('2026-07-26T16:00:00Z'), end: new Date('2026-07-26T21:00:00Z'), hours: 5, status: A.STATUS.PENDING };
+    const p = A.plan(form, { hours: 4.333, status: A.STATUS.APPROVED });
+    assert.strictEqual(p.hours, 4.33);
+    assert.strictEqual(p.end.toISOString(), '2026-07-26T20:20:00.000Z');
+  },
+  async 'a progress hook that throws does not stop the batch'({ D0007, assert }) {
+    const A = D0007.Approvals;
+    const values = { start: new Date('2026-07-26T16:00:00Z'), end: new Date('2026-07-26T21:00:00Z'), hours: 5, status: A.STATUS.APPROVED };
+    const res = await A.run([{ shiftId: '5aad352a-4685-f111-ab0e-7ced8da56148', values }, { shiftId: '5aad352a-4685-f111-ab0e-7ced8da56148', values }], { driver: 'fetch', onProgress: () => { throw new Error('ui blew up'); } });
+    assert.strictEqual(res.done.length, 2);
   },
 };

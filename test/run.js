@@ -98,6 +98,7 @@ async function main() {
     const t = { D0007: w.D0007, window: w, document: w.document, assert, isDate, fetchLog: mock.log, mock, GROUP_ID, fx };
     const tests = require(path.join(__dirname, f));
     for (const [name, fn] of Object.entries(tests)) {
+      mock.clear();   // overrides and the fetch log are per test
       try { await fn(t); passed++; console.log(`  ok   ${f} › ${name}`); }
       catch (e) { failed++; console.log(`  FAIL ${f} › ${name}\n       ${(e.stack || e).toString().split('\n').slice(0, 4).join('\n       ')}`); }
     }

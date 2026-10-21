@@ -29,6 +29,7 @@
 
   // Entry from the tab bar or Refresh: start over.
   async function renderHours() {
+    if (AP.running) { await paintHours(); return; }   // a batch is mid-flight; just show it
     Object.assign(AP, { list: null, error: null, confirm: null, running: null, rows: new Map(), progress: '' });
     await apLoad();
   }
@@ -50,7 +51,8 @@
       if (token !== AP.loadToken) return;
       AP.list = list; AP.rows = new Map(); AP.progress = '';
       // (a form read still in flight belongs to the old row object; the new one just reads again when touched)
-      for (const it of list) { const old = keepRows && prev.get(it.shiftId); AP.rows.set(it.shiftId, old ? { ...old, item: it, formLoading: false, formPromise: null } : apRow(it)); }
+      for (const it of list) { const old = keepRows && prev.get(it.shiftId); AP.rows.set(it.shiftId, old ? { ...old, item: it, form: null, formLoading: false, formPromise: null } : apRow(it)); }
+      // (edits and selection carry over; the form snapshot doesn't, so the next touch reads it fresh)
     } catch (e) { if (token !== AP.loadToken) return; AP.error = e.message || String(e); AP.progress = ''; }
     await paintHours();
   }
@@ -143,7 +145,8 @@
   }
   function apActionsHTML() {
     const n = apSelected().length;
-    return `<div class="ap-actions" id="ap-actions"><b id="ap-count">${n} selected</b><span class="sp"></span>
+    const hidden = apSelected().filter(r => !matches(state.pendingSearch || '', r.item.name, r.item.event)).length;
+    return `<div class="ap-actions" id="ap-actions"><b id="ap-count">${n} selected${hidden ? ` (${hidden} hidden by the filter)` : ''}</b><span class="sp"></span>
       <button class="btn" id="ap-clear" ${n && !apBusy() ? '' : 'disabled'}>Clear selection</button>
       <button class="btn primary" id="ap-submit" ${n && !apBusy() ? '' : 'disabled'}>Submit ${n} change${n === 1 ? '' : 's'}</button></div>`;
   }
@@ -175,6 +178,7 @@
 
   // In-place updates so typing in one row doesn't repaint the screen.
   function apRowDom(r, { keepHours = false } = {}) {
+    if (AP.rows.get(r.id) !== r) return;   // an older copy of this row (a reload happened); its DOM isn't ours
     const tr = main && main.querySelector(`tr.ap-row[data-id="${r.id}"]`); if (!tr) return;
     const s = apShown(r);
     tr.classList.toggle('sel', r.sel);
@@ -192,7 +196,8 @@
   }
   function apCounts() {
     const n = apSelected().length;
-    const c = main.querySelector('#ap-count'); if (c) c.textContent = `${n} selected`;
+    const hidden = apSelected().filter(r => !matches(state.pendingSearch || '', r.item.name, r.item.event)).length;
+    const c = main.querySelector('#ap-count'); if (c) c.textContent = `${n} selected${hidden ? ` (${hidden} hidden by the filter)` : ''}`;
     const b = main.querySelector('#ap-submit'); if (b) { b.textContent = `Submit ${n} change${n === 1 ? '' : 's'}`; b.disabled = !n || apBusy(); }
     const cl = main.querySelector('#ap-clear'); if (cl) cl.disabled = !n || apBusy();
     (AP.groups || []).forEach((g, i) => { const k = g.rows.filter(r => r.sel).length; const s = main.querySelector(`[data-gsel="${i}"]`); if (s) s.textContent = k; const sa = main.querySelector(`[data-selall="${i}"]`); if (sa) sa.textContent = k === g.rows.length ? 'Select none' : 'Select all'; });
@@ -244,14 +249,19 @@
     const sel = apSelected(); if (!sel.length || apBusy()) return;
     AP.confirm = { loading: true, items: [] };
     await paintHours();
+    // Always read the forms again here: the panel must describe VMS as it is
+    // now, not as it was when the row was first clicked.
+    sel.forEach(r => { r.form = null; r.formError = null; });
     await Promise.all(sel.map(apEnsureForm));
     if (!AP.confirm || !AP.confirm.loading) return;   // cancelled meanwhile
     AP.confirm = { loading: false, items: sel.map(r => {
       if (!r.form) return { r, err: 'Couldn\'t read the shift form: ' + (r.formError || 'unknown error') };
       if (r.form.status !== Approvals.STATUS.PENDING) return { r, err: `Already ${Approvals.STATUS_LABEL[r.form.status] || r.form.status} in VMS` };
+      if (r.form.participation && !norm(r.form.participation).startsWith(norm(r.item.name))) return { r, err: `The form is for "${r.form.participation}", not this row` };
       try {
         const p = Approvals.plan(r.form, { ...r.edits, status: r.status });
-        const noop = p.status === r.form.status && p.hours === r2(r.form.hours) && p.start.getTime() === r.form.start.getTime() && p.end.getTime() === r.form.end.getTime();
+        const same = (a, b) => (!a && !b) || (a && b && a.getTime() === b.getTime());
+        const noop = p.status === r.form.status && p.hours === r2(r.form.hours) && same(p.start, r.form.start) && same(p.end, r.form.end);
         return { r, plan: p, noop };
       } catch (e) { return { r, err: e.message || String(e) }; }
     }) };
@@ -263,9 +273,9 @@
     if (!items.length) { AP.confirm = null; paintHours(); return; }
     AP.confirm = null; AP.running = { i: 0, n: items.length };
     await paintHours();
-    const res = await Approvals.run(items.map(i => ({ shiftId: i.r.id, values: i.plan, row: i.r })), {
+    const res = await Approvals.run(items.map(i => ({ shiftId: i.r.id, values: i.plan, row: i.r, expect: { status: Approvals.STATUS.PENDING, start: i.r.form.start, end: i.r.form.end, hours: i.r.form.hours, name: i.r.item.name } })), {
       onProgress: (idx, result) => {
-        const r = items[idx].r; r.result = result; AP.running.i = idx + 1;
+        const r = items[idx].r; r.result = result; if (AP.running) AP.running.i = idx + 1;
         apRowDom(r);
         const n = main.querySelector('#ap-run .ap-run-n'); if (n) n.textContent = `${idx + 1} of ${items.length}`;
         const bar = main.querySelector('#ap-run .track i'); if (bar) bar.style.width = `${Math.round(100 * (idx + 1) / items.length)}%`;
